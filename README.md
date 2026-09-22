@@ -46,8 +46,14 @@ middle of the screen, the darks fall away, the glare runs cold, and the whole
 frame lifts - a camera, or an eye, caught by a light it was not ready for. It
 snaps in over a couple of frames and takes most of a second to recover.
 
-It runs as two passes: a quarter resolution bright pass, then a composite that
-spreads that buffer back over the image. Everything about it - glare amount,
+The tone curve crushes the shadows and then multiplies the whole image by two
+and a half, so everything above about a fifth brightness lifts and the top half
+of the range clips to white. Measured against the reference clip: mean up a
+fifth, and 6% of the frame blown before the glare pass adds its own.
+
+It runs as two passes: a quarter resolution bright pass, which thresholds the
+image *after* exposure so a dim room still blooms once it has been blown out,
+then a composite that spreads that buffer back over the image. Everything about it - glare amount,
 threshold, radius, streak length, exposure, shadow crush and tint - is a uniform
 you can tune live from the post processing HUD. It takes the same trigger
 setting as the slow motion, so it can be limited to the end of a fight.
@@ -85,11 +91,18 @@ hit landed, so it is not shield-only. Medium armour is the gap: it gets a sound
 and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 
 **Impact lights:** sparks throw a very short lived light where they appear
-(cold blue, ~0.1s), and hits that spark off nothing - flesh, cloth, light
-armour - get a weaker, warmer one that is meant to go unnoticed. NIF lights are
-not loaded by OpenMW, so these are real light records spawned by the mod, from a
-pool of three objects per colour that are parked disabled and reused rather than
-created and destroyed per hit.
+(cold blue, ~0.1s), and hits on an actor that spark off nothing - flesh, cloth,
+light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
+scenery gets the spark light but never the warm one.
+
+Both are placed at the contact point Impact Effects raycast, not at the hit
+position the engine reports with the hit itself, which for a melee blow can sit
+at the victim's origin - at their feet. Without Impact Effects installed there
+is nothing better to go on and the engine's position is used.
+
+NIF lights are not loaded by OpenMW, so these are real light records spawned by
+the mod, from a pool of three objects per colour that are parked disabled and
+reused rather than created and destroyed per hit.
 
 ## Settings
 

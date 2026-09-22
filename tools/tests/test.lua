@@ -178,24 +178,90 @@ frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
 check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
+check(#sentLights() == 0,
+      "but does not light it: Impact Effects knows the contact point, the hit event does not")
 
+-- Impact Effects hands over the material and the raycast's contact point.
+local hitPos = { x = 10, y = 20, z = 30 }
+stub.sentGlobalEvents = {}
+stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Dmg", hitPos = hitPos })
 local lights = sentLights()
-check(#lights == 1, "and lights the hit")
-check(lights[1] and lights[1].r > lights[1].b, "with the warm light, since nothing sparked")
+check(#lights == 1 and lights[1].r > lights[1].b,
+      "flesh gets the warm light, at the point Impact Effects raycast")
+check(lights[1] and lights[1].pos == hitPos, "so it lands where the blow did")
 
 stub.sentGlobalEvents = {}
-stub.impactActorHandlers[1](stub.newObject("npc"),
-    { material = "ParryArmorHeavy", hitPos = { x = 1, y = 2, z = 3 } })
+stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
 lights = sentLights()
 check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold instead")
 
-player.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true,
-                                       hitPos = { x = 1, y = 2, z = 3 } })
-check(#sentLights() == 1, "and the warm light does not double up on the same hit")
+-- Striking the world goes through the object handler, which is the one that
+-- was missing: metal scenery sparked but never lit up.
+check(#stub.impactObjectHandlers == 1, "the object handler is registered")
+stub.sentGlobalEvents = {}
+stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Metal", hitPos = hitPos })
+lights = sentLights()
+check(#lights == 1 and lights[1].b > lights[1].r, "hitting metal scenery lights it too")
+
+stub.sentGlobalEvents = {}
+stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Wood", hitPos = hitPos })
+check(#sentLights() == 0, "but hitting a crate lights nothing")
 
 stub.sentGlobalEvents = {}
 player.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = false })
 check(#sentLights() == 0, "a miss lights nothing")
+
+print("\n== spark variety ==")
+local function sentVfx()
+    local out = {}
+    for _, ev in ipairs(stub.sentGlobalEvents) do
+        if ev.name == "SpawnVfx" then table.insert(out, ev.data) end
+    end
+    return out
+end
+
+local seen, taken = {}, 0
+for _ = 1, 40 do
+    stub.sentGlobalEvents = {}
+    local var = { material = "Metal", hitPos = hitPos }
+    stub.impactActorHandlers[1](stub.newObject("npc"), var)
+    if var.noVfx then taken = taken + 1 end
+    for _, v in ipairs(sentVfx()) do seen[v.model] = true end
+end
+check(taken == 40, "a plain metal impact is taken over, so the burst can be chosen")
+local variants = 0
+for _ in pairs(seen) do variants = variants + 1 end
+check(variants > 1, "and several different bursts are played (" .. variants .. " over 40 hits)")
+
+stub.sentGlobalEvents = {}
+local var = { material = "Stone", hitPos = hitPos }
+stub.impactActorHandlers[1](stub.newObject("npc"), var)
+check(not var.noVfx, "an impact that also throws dust keeps its own effect")
+local extra = sentVfx()
+check(#extra == 1 and extra[1].model:find("cluster"),
+      "and gets a cluster of hard-thrown sparks over the top")
+
+setting("Effects", "SparkVariety", false)
+stub.sentGlobalEvents = {}
+var = { material = "Metal", hitPos = hitPos }
+stub.impactActorHandlers[1](stub.newObject("npc"), var)
+check(not var.noVfx and #sentVfx() == 0, "with variety off, Impact Effects plays its own mesh")
+setting("Effects", "SparkVariety", true)
+
+print("\n== without Impact Effects ==")
+do
+    stub.install(stub.player)
+    stub.packages["openmw.interfaces"].impactEffects = nil
+    stub.settingsPages, stub.settingsGroups = {}, {}
+    stub.hitHandlers = {}
+    local lone = loadScript("player.lua")
+    lone.engineHandlers.onUpdate(0.016)
+    stub.sentGlobalEvents = {}
+    lone.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true,
+                                         hitPos = hitPos })
+    check(#sentLights() == 1, "the hit event lights the blow, since nothing better is available")
+    stub.enableImpactEffects()
+end
 
 print("\n== the global script carries it out ==")
 stub.timeScale = 1

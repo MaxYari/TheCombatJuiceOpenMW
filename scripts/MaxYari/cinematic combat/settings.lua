@@ -155,6 +155,11 @@ I.Settings.registerGroup {
             description = "Changing this makes a new light record the first time it is used.",
         },
 
+        checkbox('SparkVariety', 'Vary The Spark Bursts', true,
+            "Several bursts are baked for each kind of impact, some of them with a cluster of " ..
+            "sparks thrown much harder than the rest, and one is picked at random every time. " ..
+            "Off means the same burst every hit."),
+
         checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', true,
             "Impact Effects already sparks off heavy armour, shields and metal, but medium " ..
             "armour only gets a sound. This sparks off medium armour as well."),

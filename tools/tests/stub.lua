@@ -115,6 +115,9 @@ packages["openmw.animation"] = {
 packages["openmw.types"] = {
     Player = { objectIsInstance = function(o) return o ~= nil and o.kind == "player" end },
     Actor = {
+        objectIsInstance = function(o)
+            return o ~= nil and (o.kind == "npc" or o.kind == "creature" or o.kind == "player")
+        end,
         isDead = function(o) return o.dead end,
         isDeathFinished = function(o) return o.dead end,
         getStance = function() return 0 end,

@@ -265,30 +265,84 @@ end
 
 -- Hits ----------------------------------------------------------------------
 
-local lastSparkLightAt = -1000
+local sparkDir = "meshes/MaxYari/cinematic combat/sparks/"
 
--- A hit that threw no sparks gets the weaker, warmer light. With Impact Effects
--- installed the material decides; without it every hit takes this path.
-local function hitLight(hitPos)
-    if not effectSettings.HitLightEnabled or not hitPos then return end
-    if now() - lastSparkLightAt < 0.1 then return end -- sparks already lit this one
-    local color = effectSettings.HitLightColor
+-- Variant 1 of each family keeps the name Impact Effects plays; the rest are
+-- ours. A burst is picked out of the list every time one is thrown.
+local SPARK_VARIANTS = {
+    metal = { "meshes/e/impact/metalSpark.nif", sparkDir .. "metal_2.nif",
+              sparkDir .. "metal_3.nif", sparkDir .. "metal_4.nif" },
+    parry = { "meshes/e/impact/parrySpark.nif", sparkDir .. "parry_2.nif",
+              sparkDir .. "parry_3.nif", sparkDir .. "parry_4.nif" },
+    shield = { "meshes/e/impact/shieldBlock.nif", sparkDir .. "shield_2.nif",
+               sparkDir .. "shield_3.nif" },
+}
+
+-- Loose clusters of hard-thrown sparks, for impacts whose own effect is left
+-- alone because it is more than just sparks.
+local SPARK_CLUSTERS = { sparkDir .. "cluster_1.nif", sparkDir .. "cluster_2.nif",
+                         sparkDir .. "cluster_3.nif" }
+
+-- Materials whose spark effect is a single mesh this mod replaces, so the whole
+-- thing can be swapped for a random variant. Impact Effects scales the armour
+-- one down; matching that keeps the burst the size it always was.
+local SPARK_TAKEOVER = {
+    Metal = { family = "metal", scale = 1 },
+    MetalHeavy = { family = "metal", scale = 1 },
+    Parry = { family = "parry", scale = 1 },
+    ParryArmorHeavy = { family = "parry", scale = 0.5 },
+}
+
+local impactHooksDone = false
+
+local function pick(list)
+    return list[math.random(#list)]
+end
+
+local function spawnVfx(model, pos, scale)
+    core.sendGlobalEvent("SpawnVfx", {
+        model = model,
+        position = pos,
+        options = { mwMagicVfx = false, useAmbientLight = false, scale = scale or 1 },
+    })
+end
+
+local function spawnLight(pos, radius, duration, color, fallback)
+    if not pos then return end
     core.sendGlobalEvent(DEFS.e.SpawnLight, {
         player = selfObject,
-        pos = hitPos,
-        radius = effectSettings.HitLightRadius or 90,
-        duration = effectSettings.HitLightDuration or 0.06,
-        r = color and color.r or 1.0,
-        g = color and color.g or 0.86,
-        b = color and color.b or 0.6,
+        pos = pos,
+        radius = radius,
+        duration = duration,
+        r = color and color.r or fallback[1],
+        g = color and color.g or fallback[2],
+        b = color and color.b or fallback[3],
     })
+end
+
+local function sparkLight(pos)
+    if not effectSettings.SparkLightEnabled then return end
+    spawnLight(pos, effectSettings.SparkLightRadius or 160,
+        effectSettings.SparkLightDuration or 0.09,
+        effectSettings.SparkLightColor, { 0.62, 0.78, 1.0 })
+end
+
+local function hitLight(pos)
+    if not effectSettings.HitLightEnabled then return end
+    spawnLight(pos, effectSettings.HitLightRadius or 90,
+        effectSettings.HitLightDuration or 0.06,
+        effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
 end
 
 -- Sent by the actor we hit, from its own I.Combat hit handler.
 local function onAttackLanded(data)
     if not data.successful then return end
     startShake(1)
-    hitLight(data.hitPos)
+    -- Without Impact Effects nothing else knows where the hit landed, so the
+    -- engine's own hit position has to do. With it, the light is spawned from
+    -- the impact hook instead, off a raycast that actually hit something -
+    -- this one can sit at the victim's feet.
+    if not impactHooksDone then hitLight(data.hitPos) end
 end
 
 -- Somebody landed a hit on us.
@@ -302,45 +356,54 @@ end)
 --
 -- Impact Effects raycasts every swing, works out what was struck and plays the
 -- spark meshes this mod replaces. Hooking it is how we learn where a spark just
--- happened, and what was hit, without doing any of that work again.
+-- happened, and what was hit, without doing any of that work again - and its
+-- hit position is the contact point, not the victim's origin.
 
-local impactHooksDone = false
+local function onImpact(o, var)
+    local material = var.material
+    local pos = var.hitPos
+    if not material or not pos then return end
+
+    local mediumArmour = material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor
+    local sparks = DEFS.sparkMaterials[material] ~= nil
+    local variety = effectSettings.SparkVariety
+
+    if sparks or mediumArmour then
+        sparkLight(pos)
+    elseif o and types.Actor.objectIsInstance(o) then
+        -- Flesh, cloth, light armour: the weaker, warmer flash. Struck scenery
+        -- gets nothing, it is only enemies that should light up.
+        hitLight(pos)
+    end
+
+    if sparks and variety then
+        local takeover = SPARK_TAKEOVER[material]
+        if takeover then
+            -- Ours is the only effect this material plays, so replace it
+            -- outright. The sound is already out by the time handlers run.
+            var.noVfx = true
+            spawnVfx(pick(SPARK_VARIANTS[takeover.family]), pos, takeover.scale)
+        else
+            -- Dust and sparks together: leave it be and throw a handful of
+            -- hard-flung sparks over the top.
+            spawnVfx(pick(SPARK_CLUSTERS), pos, 1)
+        end
+    end
+
+    -- Impact Effects sparks off heavy armour, ice armour, shields and bare
+    -- metal, but medium armour only gets a sound. Optionally fill that in.
+    if mediumArmour then
+        spawnVfx(variety and pick(SPARK_VARIANTS.parry) or SPARK_VARIANTS.parry[1], pos, 0.5)
+    end
+end
 
 local function setUpImpactHooks()
     if impactHooksDone or not I.impactEffects then return end
     impactHooksDone = true
-
-    I.impactEffects.addHitActorHandler(function(o, var)
-        local material = var.material
-        if not material or not var.hitPos then return end
-
-        if DEFS.sparkMaterials[material] then
-            lastSparkLightAt = now()
-            if effectSettings.SparkLightEnabled then
-                local color = effectSettings.SparkLightColor
-                core.sendGlobalEvent(DEFS.e.SpawnLight, {
-                    player = selfObject,
-                    pos = var.hitPos,
-                    radius = effectSettings.SparkLightRadius or 160,
-                    duration = effectSettings.SparkLightDuration or 0.09,
-                    r = color and color.r or 0.62,
-                    g = color and color.g or 0.78,
-                    b = color and color.b or 1.0,
-                })
-            end
-        end
-
-        -- Impact Effects sparks off heavy armour, ice armour, shields and bare
-        -- metal, but medium armour only gets a sound. Optionally fill that in.
-        if material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor then
-            lastSparkLightAt = now()
-            core.sendGlobalEvent("SpawnVfx", {
-                model = "meshes/e/impact/parrySpark.nif",
-                position = var.hitPos,
-                options = { mwMagicVfx = false, useAmbientLight = false, scale = 0.5 },
-            })
-        end
-    end)
+    I.impactEffects.addHitActorHandler(onImpact)
+    -- Without this one, striking the world - a metal door, a statue, stone -
+    -- never reaches us, which is why those impacts had no light.
+    I.impactEffects.addHitObjectHandler(onImpact)
 end
 
 -- Engine handlers -----------------------------------------------------------

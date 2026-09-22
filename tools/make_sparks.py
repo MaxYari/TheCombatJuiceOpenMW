@@ -21,6 +21,14 @@ Every controller clamps at its last key (flags 8|4). With the default "cycle"
 extrapolation a controller that ends before the effect does starts over, which
 looked like a second burst appearing just before the effect was cleaned up.
 
+Each family of sparks is baked several times over, with different counts and
+seeds, and some of the variants carry a cluster of sparks thrown much harder
+than the rest - they leave fast, travel several times as far and outlive the
+burst. Variant 1 keeps the name Impact Effects plays, the rest sit in
+meshes/MaxYari/cinematic combat/sparks/ and the mod picks between them at
+random. The loose cluster files there are added on top of impacts whose effect
+this mod does not replace outright.
+
 The effect is spawned through the engine's VFX path, which hands every
 controller in the file the effect's own clock and deletes the effect once the
 longest controller ends, so the whole burst plays once and disappears.
@@ -54,38 +62,64 @@ GRAVITY = 700.0  # units/s^2, pulling -Z, baked into the arcs.
 
 # ---------------------------------------------------------------- per-file setup
 
-SPARKS = {
+FAMILIES = {
     # Weapon on metal: the loudest of the three.
-    "metalSpark.nif": dict(
+    "metal": dict(
+        replaces="metalSpark.nif",
+        variants=4,
         seed=20260921,
-        streaks=8,
-        streak_speed=(170.0, 430.0),
-        streak_life=(0.22, 0.40),
-        streak_length=(9.0, 22.0),
-        streak_width=(0.85, 1.5),
+        streaks=(5, 9),
+        speed=(170.0, 430.0),
+        life=(0.22, 0.40),
+        length=(9.0, 22.0),
+        width=(0.85, 1.5),
         cone=(0.0, 125.0),      # degrees away from +Z that streaks are thrown
+        fast_chance=0.65,
+        fast_count=(2, 4),
     ),
     # Parry / weapon on armour. Impact Effects also scales this one to 0.5.
-    "parrySpark.nif": dict(
+    "parry": dict(
+        replaces="parrySpark.nif",
+        variants=4,
         seed=760921,
-        streaks=6,
-        streak_speed=(150.0, 360.0),
-        streak_life=(0.20, 0.34),
-        streak_length=(8.0, 18.0),
-        streak_width=(0.8, 1.35),
+        streaks=(4, 7),
+        speed=(150.0, 360.0),
+        life=(0.20, 0.34),
+        length=(8.0, 18.0),
+        width=(0.8, 1.35),
         cone=(0.0, 125.0),
+        fast_chance=0.5,
+        fast_count=(2, 3),
     ),
     # Shield block: fewer, shorter, more of a scuff.
-    "shieldBlock.nif": dict(
+    "shield": dict(
+        replaces="shieldBlock.nif",
+        variants=3,
         seed=550821,
-        streaks=5,
-        streak_speed=(120.0, 300.0),
-        streak_life=(0.18, 0.30),
-        streak_length=(6.0, 14.0),
-        streak_width=(0.75, 1.2),
+        streaks=(4, 6),
+        speed=(120.0, 300.0),
+        life=(0.18, 0.30),
+        length=(6.0, 14.0),
+        width=(0.75, 1.2),
         cone=(0.0, 110.0),
+        fast_chance=0.4,
+        fast_count=(1, 3),
     ),
 }
+
+# The hard-thrown sparks. Two to four times the speed of the rest and a longer
+# life, so they leave the impact as long streaks and are still travelling when
+# the burst around them has gone out.
+FAST = dict(
+    speed=(520.0, 980.0),
+    life=(0.35, 0.60),
+    length=(24.0, 52.0),
+    width=(0.7, 1.15),
+    cone=(0.0, 95.0),
+)
+
+# Loose clusters of those, spawned on top of impacts this mod does not take over.
+CLUSTERS = dict(count=3, seed=31337, streaks=(3, 5))
 
 # The texture carries the colour - white hot at the head, blue down the tail.
 STREAK_EMISSIVE = (1.0, 1.0, 1.0)
@@ -186,13 +220,13 @@ def streak_geometry(length, width):
     return data
 
 
-def build_streak(index, rng, cfg):
+def build_streak(index, rng, params):
     """One keyframed streak: a lit quad cross flying a baked ballistic arc."""
-    speed = rng.uniform(*cfg["streak_speed"])
-    life = rng.uniform(*cfg["streak_life"])
-    length = rng.uniform(*cfg["streak_length"]) * (0.6 + 0.4 * speed / cfg["streak_speed"][1])
-    width = rng.uniform(*cfg["streak_width"])
-    direction = random_cone_direction(rng, cfg["cone"])
+    speed = rng.uniform(*params["speed"])
+    life = rng.uniform(*params["life"])
+    length = rng.uniform(*params["length"]) * (0.6 + 0.4 * speed / params["speed"][1])
+    width = rng.uniform(*params["width"])
+    direction = random_cone_direction(rng, params["cone"])
     v0 = direction * speed
     drag = rng.uniform(1.1, 2.2)  # 1/s, air slowing the spark down
 
@@ -273,13 +307,27 @@ def build_streak(index, rng, cfg):
 
 # ----------------------------------------------------------------------- build
 
-def build(name, cfg):
-    rng = random.Random(cfg["seed"])
-    children = [build_streak(i, rng, cfg) for i in range(cfg["streaks"])]
-    root = nif.NiNode(name="CinematicCombatSpark", flags=10, children=children)
+def build_streaks(streaks):
+    """Wrap a list of streak nodes into a finished NIF."""
+    root = nif.NiNode(name="CinematicCombatSpark", flags=10, children=streaks)
     stream = nif.NiStream()
     stream.root = root
     return stream
+
+
+def build_variant(cfg, rng, with_fast):
+    """One spark burst: the ordinary streaks, plus a hard-thrown cluster."""
+    params = dict(speed=cfg["speed"], life=cfg["life"], length=cfg["length"],
+                  width=cfg["width"], cone=cfg["cone"])
+    count = rng.randint(*cfg["streaks"])
+    streaks = [build_streak(i, rng, params) for i in range(count)]
+
+    fast = 0
+    if with_fast:
+        fast = rng.randint(*cfg["fast_count"])
+        streaks += [build_streak(count + i, rng, FAST) for i in range(fast)]
+
+    return build_streaks(streaks), count, fast
 
 
 def build_lightsource():
@@ -292,18 +340,34 @@ def build_lightsource():
 
 def main():
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent
-    out = root / "meshes" / "e" / "impact"
-    out.mkdir(parents=True, exist_ok=True)
-    for name, cfg in SPARKS.items():
-        stream = build(name, cfg)
-        stream.save(out / name)
-        print(f"wrote {out / name} ({(out / name).stat().st_size} bytes, "
-              f"{cfg['streaks']} streaks)")
+    impact_dir = root / "meshes" / "e" / "impact"
+    spark_dir = root / "meshes" / "MaxYari" / "cinematic combat" / "sparks"
+    impact_dir.mkdir(parents=True, exist_ok=True)
+    spark_dir.mkdir(parents=True, exist_ok=True)
+
+    for family, cfg in FAMILIES.items():
+        rng = random.Random(cfg["seed"])
+        for n in range(1, cfg["variants"] + 1):
+            with_fast = rng.random() < cfg["fast_chance"]
+            stream, count, fast = build_variant(cfg, rng, with_fast)
+            # Variant 1 keeps the name Impact Effects plays, so it is what any
+            # other mod spawning these meshes gets.
+            path = (impact_dir / cfg["replaces"]) if n == 1 else (spark_dir / f"{family}_{n}.nif")
+            stream.save(path)
+            print(f"wrote {path.name:<20} {count} streaks"
+                  + (f" + {fast} thrown hard" if fast else ""))
+
+    rng = random.Random(CLUSTERS["seed"])
+    for n in range(1, CLUSTERS["count"] + 1):
+        count = rng.randint(*CLUSTERS["streaks"])
+        stream = build_streaks([build_streak(i, rng, FAST) for i in range(count)])
+        path = spark_dir / f"cluster_{n}.nif"
+        stream.save(path)
+        print(f"wrote {path.name:<20} {count} streaks thrown hard")
 
     light_dir = root / "meshes" / "MaxYari" / "cinematic combat"
-    light_dir.mkdir(parents=True, exist_ok=True)
     build_lightsource().save(light_dir / "lightsource.nif")
-    print(f"wrote {light_dir / 'lightsource.nif'}")
+    print(f"wrote {'lightsource.nif':<20} (the spark flash light's model)")
 
 
 if __name__ == "__main__":

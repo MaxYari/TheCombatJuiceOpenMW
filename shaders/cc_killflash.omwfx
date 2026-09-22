@@ -8,7 +8,7 @@ uniform_float uStrength {
 }
 
 uniform_float uGlow {
-    default = 1.45;
+    default = 0.8;
     min = 0.0;
     max = 6.0;
     step = 0.05;
@@ -17,12 +17,12 @@ uniform_float uGlow {
 }
 
 uniform_float uThreshold {
-    default = 0.5;
+    default = 0.6;
     min = 0.0;
     max = 1.0;
     step = 0.01;
     display_name = "Glare Threshold";
-    description = "Brightness a pixel needs before it starts to bloom.";
+    description = "Brightness a pixel needs before it blooms, measured after the exposure lift - so a dim room still blooms once it is blown out.";
 }
 
 uniform_float uGlowRadius {
@@ -44,21 +44,21 @@ uniform_float uRadial {
 }
 
 uniform_float uExposure {
-    default = 0.22;
+    default = 1.5;
     min = 0.0;
-    max = 2.0;
-    step = 0.01;
+    max = 6.0;
+    step = 0.05;
     display_name = "Exposure Lift";
-    description = "Straight brightening of the whole image.";
+    description = "The blow-out itself: the image is multiplied by 1 + this, so everything above roughly a fifth brightness lifts and the top half of the range clips to white.";
 }
 
 uniform_float uContrast {
-    default = 0.5;
+    default = 0.45;
     min = 0.0;
     max = 2.0;
     step = 0.01;
     display_name = "Shadow Crush";
-    description = "Deepens what is already dark, the way an overexposed frame does. This is a tone curve over the whole image, not a vignette.";
+    description = "Applied before the exposure lift, so deep shadows stay dark while everything else blows out. A tone curve over the whole image, not a vignette.";
 }
 
 uniform_vec3 uTint {
@@ -97,11 +97,15 @@ fragment cc_bright(target=RT_CCGlare) {
         c += omw_GetLastShader(omw_TexCoord + vec2(o.x, o.y)).rgb;
         c *= 0.25;
 
-        float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-        float over = max(luma - uThreshold, 0.0) / max(1.0 - uThreshold, 0.001);
+        // Expose first, then look for what is blown: a dim room has nothing
+        // over the threshold until the flash has lifted it.
+        float s = min(uStrength, 2.0);
+        vec3 exposed = pow(max(c, vec3(0.0)), vec3(1.0 + uContrast * s)) * (1.0 + uExposure * s);
 
-        // Squared so the brightest parts of the frame dominate the glare.
-        omw_FragColor = vec4(c * over * over, 1.0);
+        float luma = dot(exposed, vec3(0.2126, 0.7152, 0.0722));
+        float over = clamp((luma - uThreshold) / max(1.0 - uThreshold, 0.001), 0.0, 2.0);
+
+        omw_FragColor = vec4(exposed * over, 1.0);
     }
 }
 
@@ -154,10 +158,10 @@ fragment cc_flash(rt1=RT_CCGlare) {
         }
         streak /= max(streakTotal, 0.0001);
 
-        // Overexposure: the darks fall away, everything lifts, and the glare is
-        // added on top until the highlights clip.
-        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(1.0 + uContrast * s));
-        color *= 1.0 + uExposure * s;
+        // Overexposure. The crush goes first so deep shadows keep falling away,
+        // then the whole image is multiplied until its top half clips white, and
+        // the glare is smeared over that.
+        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(1.0 + uContrast * s)) * (1.0 + uExposure * s);
         color += (glare + streak) * uTint * uGlow * s;
 
         omw_FragColor = vec4(color, scene.a);
