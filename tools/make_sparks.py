@@ -8,19 +8,18 @@ Blender Morrowind plugin (io_scene_mw). Point ES3_LIB at another copy if yours
 lives somewhere else. Everything written here is generated from the numbers in
 SPARKS below - no mesh from another mod is reused.
 
-Each file holds two things:
+Each file is a set of *streaks*: flat cross-shaped quads flying a ballistic arc
+that is baked into NiKeyframeControllers, each one turned to face the direction
+it is travelling. OpenMW draws NIF particles as camera-facing squares and
+ignores NiParticleRotation entirely (nifloader.cpp: "RC_NiParticleRotation //
+unused"), so a particle can not be aligned to its velocity - but a keyframed
+node can, and the arc bends the streak as it falls. Two quads crossed along the
+streak axis keep it visible from any angle, and the triangles are written twice
+with both windings so backface culling can't hide one.
 
-* two particle systems of small round sparkles, which is what a Morrowind spark
-  effect normally is, only smaller, blue-white and pulled down by gravity;
-
-* a set of *streaks*: flat cross-shaped quads flying a ballistic arc that is
-  baked into NiKeyframeControllers, each one turned to face the direction it is
-  travelling. OpenMW draws NIF particles as camera-facing squares and ignores
-  NiParticleRotation entirely (nifloader.cpp: "RC_NiParticleRotation // unused"),
-  so a particle can not be aligned to its velocity - but a keyframed node can,
-  and the arc bends the streak as it falls. Two quads crossed along the streak
-  axis keep it visible from any angle, and the triangles are written twice with
-  both windings so backface culling can't hide one.
+Every controller clamps at its last key (flags 8|4). With the default "cycle"
+extrapolation a controller that ends before the effect does starts over, which
+looked like a second burst appearing just before the effect was cleaned up.
 
 The effect is spawned through the engine's VFX path, which hands every
 controller in the file the effect's own clock and deletes the effect once the
@@ -41,7 +40,6 @@ import numpy as np  # noqa: E402
 from es3 import nif  # noqa: E402
 
 TEX = "textures\\MaxYari\\cinematic combat\\"
-POINT_TEX = TEX + "spark_point.png"
 STREAK_TEX = TEX + "spark_streak.png"
 
 # Alpha: blending on, SRC_ALPHA + ONE (additive), no alpha test.
@@ -51,7 +49,7 @@ ZBUFFER_TEST_ONLY = 1
 # Controller flags: active (0x8) + clamp at the last key (0x4) so nothing loops.
 CTRL_ACTIVE_CLAMP = 12
 
-GRAVITY = 700.0  # units/s^2, pulling -Z. Vanilla spark NIFs use 500 with decay.
+GRAVITY = 700.0  # units/s^2, pulling -Z, baked into the arcs.
 
 
 # ---------------------------------------------------------------- per-file setup
@@ -60,57 +58,36 @@ SPARKS = {
     # Weapon on metal: the loudest of the three.
     "metalSpark.nif": dict(
         seed=20260921,
-        streaks=14,
+        streaks=8,
         streak_speed=(170.0, 430.0),
         streak_life=(0.22, 0.40),
         streak_length=(9.0, 22.0),
         streak_width=(0.85, 1.5),
         cone=(0.0, 125.0),      # degrees away from +Z that streaks are thrown
-        particles=[
-            # (size, speed, speed_var, lifespan, birth_rate, emit_stop, quota)
-            dict(size=3.4, speed=150.0, speed_var=170.0, lifespan=0.34, birth=900.0,
-                 emit_stop=0.055, quota=48, gravity=GRAVITY),
-            dict(size=5.2, speed=95.0, speed_var=120.0, lifespan=0.42, birth=420.0,
-                 emit_stop=0.075, quota=32, gravity=GRAVITY * 0.85),
-        ],
     ),
     # Parry / weapon on armour. Impact Effects also scales this one to 0.5.
     "parrySpark.nif": dict(
         seed=760921,
-        streaks=11,
+        streaks=6,
         streak_speed=(150.0, 360.0),
         streak_life=(0.20, 0.34),
         streak_length=(8.0, 18.0),
         streak_width=(0.8, 1.35),
         cone=(0.0, 125.0),
-        particles=[
-            dict(size=3.0, speed=140.0, speed_var=160.0, lifespan=0.30, birth=800.0,
-                 emit_stop=0.05, quota=40, gravity=GRAVITY),
-            dict(size=4.6, speed=90.0, speed_var=110.0, lifespan=0.38, birth=380.0,
-                 emit_stop=0.07, quota=28, gravity=GRAVITY * 0.85),
-        ],
     ),
     # Shield block: fewer, shorter, more of a scuff.
     "shieldBlock.nif": dict(
         seed=550821,
-        streaks=8,
+        streaks=5,
         streak_speed=(120.0, 300.0),
         streak_life=(0.18, 0.30),
         streak_length=(6.0, 14.0),
         streak_width=(0.75, 1.2),
         cone=(0.0, 110.0),
-        particles=[
-            dict(size=2.8, speed=120.0, speed_var=140.0, lifespan=0.28, birth=700.0,
-                 emit_stop=0.05, quota=36, gravity=GRAVITY),
-            dict(size=4.2, speed=80.0, speed_var=100.0, lifespan=0.34, birth=320.0,
-                 emit_stop=0.06, quota=24, gravity=GRAVITY * 0.85),
-        ],
     ),
 }
 
-# Tint handed to the particles. The texture carries most of the colour; this
-# takes the last of the yellow out and cools the whole burst down.
-PARTICLE_COLOR = (0.78, 0.88, 1.0, 1.0)
+# The texture carries the colour - white hot at the head, blue down the tail.
 STREAK_EMISSIVE = (1.0, 1.0, 1.0)
 
 
@@ -177,102 +154,6 @@ def random_cone_direction(rng, cone):
     phi = rng.uniform(0.0, 2.0 * math.pi)
     st = math.sin(theta)
     return np.array([st * math.cos(phi), st * math.sin(phi), math.cos(theta)])
-
-
-# ------------------------------------------------------------- particle systems
-
-def build_particle_system(cfg, emitter, name):
-    """One NiBSParticleNode holding a spray of round sparkles."""
-    quota = cfg["quota"]
-
-    data = nif.NiRotatingParticlesData(
-        vertices=np.zeros((quota, 3), dtype=np.float32),
-        # Bounding sphere; keeps the burst from being culled while it spreads.
-        radius=90.0,
-        num_particles=quota,
-        particle_radius=cfg["size"] * 2.0,
-        num_active=1,
-        # Per-vertex size multipliers. The first particle is the inactive seed
-        # every Morrowind spark NIF carries, so it is scaled down to nothing.
-        sizes=np.concatenate(([1e-4], np.ones(quota - 1, dtype=np.float32))).astype(np.float32),
-    )
-
-    grow_fade = nif.NiParticleGrowFade(grow_time=0.0, fade_time=cfg["lifespan"] * 0.85)
-    gravity = nif.NiGravity(
-        decay=0.0,
-        strength=cfg["gravity"],
-        force_type=nif.NiGravity.ForceType.FORCE_PLANAR,
-        position=vec(0.0, 0.0, 0.0),
-        direction=vec(0.0, 0.0, -1.0),
-        next=grow_fade,
-    )
-
-    controller = nif.NiParticleSystemController(
-        flags=8,
-        frequency=1.0,
-        phase=0.0,
-        start_time=0.0,
-        stop_time=cfg["lifespan"] + cfg["emit_stop"],
-        speed=cfg["speed"],
-        speed_variation=cfg["speed_var"],
-        declination_angle=2.75,
-        declination_variation=math.pi,
-        planar_angle=3.0,
-        planar_angle_variation=math.pi,
-        initial_normal=vec(1.0, 0.0, 0.0),
-        initial_color=vec(PARTICLE_COLOR),
-        initial_size=cfg["size"],
-        emit_start_time=0.0,
-        emit_stop_time=cfg["emit_stop"],
-        reset_particle_system=0,
-        birth_rate=cfg["birth"],
-        lifespan=cfg["lifespan"],
-        lifespan_variation=cfg["lifespan"] * 0.25,
-        use_birth_rate=1,
-        spawn_on_death=0,
-        emitter=emitter,
-        spawn_generations=0,
-        spawn_percentage=0.0,
-        spawn_multiplier=1,
-        spawned_speed_chaos=0.0,
-        spawned_direction_chaos=0.0,
-        particles=[nif.NiPerParticleData(lifespan=0.0, index=0)],
-        num_active_particles=1,
-        particle_modifier=gravity,
-        compute_dynamic_bounding_volume=1,
-    )
-    for modifier in (gravity, grow_fade):
-        modifier.controller = controller
-
-    shape = nif.NiRotatingParticles(
-        name=name,
-        flags=2,
-        data=data,
-        controller=controller,
-        properties=[
-            texturing_property(POINT_TEX),
-            nif.NiAlphaProperty(flags=ALPHA_ADDITIVE, test_ref=0),
-            nif.NiMaterialProperty(
-                name="CC Spark Point",
-                ambient_color=vec(0.0, 0.0, 0.0),
-                diffuse_color=vec(0.0, 0.0, 0.0),
-                specular_color=vec(0.0, 0.0, 0.0),
-                emissive_color=vec(1.0, 1.0, 1.0),
-                shine=0.0,
-                alpha=1.0,
-            ),
-        ],
-    )
-    controller.target = shape
-
-    # flags 10 = not hidden, particles live in world space, no autoplay: the
-    # engine's VFX clock drives the controller instead.
-    return nif.NiBSParticleNode(
-        name=name + " Node",
-        flags=10,
-        children=[shape],
-        properties=[nif.NiZBufferProperty(flags=ZBUFFER_TEST_ONLY)],
-    )
 
 
 # -------------------------------------------------------------------- streaks
@@ -394,14 +275,7 @@ def build_streak(index, rng, cfg):
 
 def build(name, cfg):
     rng = random.Random(cfg["seed"])
-    emitter = nif.NiNode(name="CC Spark Emitter", flags=2)
-
-    children = [emitter]
-    for i, particle_cfg in enumerate(cfg["particles"]):
-        children.append(build_particle_system(particle_cfg, emitter, f"CC Sparkles {i}"))
-    for i in range(cfg["streaks"]):
-        children.append(build_streak(i, rng, cfg))
-
+    children = [build_streak(i, rng, cfg) for i in range(cfg["streaks"])]
     root = nif.NiNode(name="CinematicCombatSpark", flags=10, children=children)
     stream = nif.NiStream()
     stream.root = root
@@ -424,7 +298,7 @@ def main():
         stream = build(name, cfg)
         stream.save(out / name)
         print(f"wrote {out / name} ({(out / name).stat().st_size} bytes, "
-              f"{cfg['streaks']} streaks, {len(cfg['particles'])} particle systems)")
+              f"{cfg['streaks']} streaks)")
 
     light_dir = root / "meshes" / "MaxYari" / "cinematic combat"
     light_dir.mkdir(parents=True, exist_ok=True)

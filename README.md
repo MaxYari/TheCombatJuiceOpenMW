@@ -70,14 +70,18 @@ camera-facing squares: it parses `NiParticleRotation` and then ignores it
 velocity-aligned particle mode. A stretched particle sprite would lie down in
 the same screen direction for every spark, which looks wrong.
 
-So the long sparks in this mod are not particles. Each one is a pair of quads
+So the sparks in this mod are not particles at all. Each one is a pair of quads
 crossed along its own axis, flying a ballistic arc that is **baked into
 keyframes** by `tools/make_sparks.py`, turned at every key to face the direction
 it is travelling at that moment - so the streak bends over as the spark falls.
 The crossed pair keeps it visible from any angle; both triangle windings are
-written so backface culling cannot hide it. Around them are the ordinary
-particle sparkles, smaller than vanilla, blue-white instead of yellow, and
-pulled down by gravity.
+written so backface culling cannot hide it. They are white hot at the head, blue
+down the tail, and there are few of them: five to eight per hit rather than a
+cloud.
+
+Every controller in the files clamps at its last key (`flags = 8|4`). NIF
+controllers cycle by default, so one that ends before the effect is cleaned up
+starts over - which showed up as a second burst appearing right at the end.
 
 These are mesh replacers for `meshes/e/impact/metalSpark.nif`,
 `parrySpark.nif` and `shieldBlock.nif`, so they apply to whatever plays them -
@@ -113,7 +117,7 @@ The meshes and textures in this repository are generated, and both scripts are
 safe to re-run:
 
 ```sh
-python3 tools/make_spark_textures.py     # textures/MaxYari/cinematic combat/*.png
+python3 tools/make_spark_textures.py     # textures/MaxYari/cinematic combat/spark_streak.png
 <blender>/python/bin/python3 tools/make_sparks.py   # meshes/e/impact/*.nif
 ```
 

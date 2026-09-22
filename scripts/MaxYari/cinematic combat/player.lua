@@ -139,11 +139,24 @@ end
 
 -- Kill vignette -------------------------------------------------------------
 
-local killFlashShader = shaderUtils.ShaderWrapper:new("cc_killflash", { uStrength = 0 })
+-- postprocessing.load throws if the shader does not compile or post processing
+-- is off, and an error out here would take the whole script - hit stops and all
+-- - down with it. The vignette is the only thing that should be lost.
+local killFlashShader
+do
+    local ok, wrapper = pcall(shaderUtils.ShaderWrapper.new, shaderUtils.ShaderWrapper,
+        "cc_killflash", { uStrength = 0 })
+    if ok then
+        killFlashShader = wrapper
+    else
+        gutils.print("kill vignette is off, its shader did not load: " .. tostring(wrapper), 1)
+    end
+end
+
 local killFlash = nil -- { startedAt, duration, strength }
 
 local function startKillFlash()
-    if not effectSettings.KillFlashEnabled then return end
+    if not killFlashShader or not effectSettings.KillFlashEnabled then return end
     local duration = effectSettings.KillFlashDuration or 0
     if duration <= 0 then return end
     killFlash = { startedAt = now(), duration = duration, strength = effectSettings.KillFlashStrength or 1 }
@@ -320,8 +333,10 @@ local function onLoad()
     shake = nil
     killFlash = nil
     freezeFramesLeft = 0
-    killFlashShader.u.uStrength = 0
-    killFlashShader:disable()
+    if killFlashShader then
+        killFlashShader.u.uStrength = 0
+        killFlashShader:disable()
+    end
     syncShared()
 end
 

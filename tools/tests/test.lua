@@ -225,5 +225,30 @@ actor2.engineHandlers.onUpdate(0.016)
 actor2.engineHandlers.onUpdate(0.016)
 check(stub.skipAnimCalls == 2, "an enemy's swing is held at its hit key too")
 
+print("\n== a shader that will not load ==")
+-- The .omwfx parser rejecting the file used to take the whole player script
+-- down with it, hit stops and all. Nothing but the vignette should be lost.
+stub.install(stub.player)
+stub.packages["openmw.postprocessing"].load = function()
+    error("Failed loading shader 'cc_killflash'")
+end
+stub.settingsPages, stub.settingsGroups = {}, {}
+stub.textKeyHandlers, stub.hitHandlers = {}, {}
+loaded = {}
+_G.require = makeLoader()
+local okLoad, player2 = pcall(function() return assert(loadfile(MOD .. "/player.lua"))() end)
+check(okLoad, "the player script still loads")
+if okLoad then
+    stub.sentGlobalEvents = {}
+    player2.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true })
+    local stillStops = false
+    for _, e in ipairs(stub.sentGlobalEvents) do
+        if e.name == "CC_TimeEffect" and e.data.kind == "hitstop" then stillStops = true end
+    end
+    check(stillStops, "and hits still stop time")
+    local okFrame = pcall(player2.engineHandlers.onFrame)
+    check(okFrame, "and onFrame does not touch the missing shader")
+end
+
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)
