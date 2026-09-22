@@ -1,0 +1,57 @@
+[size=6][b]Cinematic Combat[/b][/size]
+
+An OpenMW Lua mod that makes melee land harder: the world stops for a beat on every hit, drops into slow motion on the kill that ends a fight, shakes the camera, dims the screen edges for a moment, and replaces Morrowind's spark effect with one made of streaks that fly the way they are actually moving.
+
+Needs [b]OpenMW 0.51[/b] or newer and [b][url=https://www.nexusmods.com/morrowind/mods/60256]Max Yari's Script Services (MSS)[/url][/b]. [b][url=https://www.nexusmods.com/morrowind/mods/55508]OpenMW Impact Effects[/url][/b] is optional but strongly recommended - it is what decides where sparks happen.
+
+[size=5][b]What it does[/b][/size]
+
+[size=4][b]Hit stop[/b][/size]
+
+The instant a hit lands, the whole simulation drops to a fraction of its speed for a tenth of a second and snaps back. No easing - an abrupt stop reads as impact, a smooth one reads as slow motion.
+
+The awkward part is timing. The engine fires the attack animation's hit key, applies the hit, and only the [i]victim[/i] is told whether it landed; that answer comes back to the attacker an update or two later, by which time the weapon has swung past the contact pose and the stop lands on the follow through.
+
+So this mod holds the swing itself. The moment the hit key fires, before anybody knows the result, the attacker's animation is paused ([font=Courier New]skipAnimationThisFrame[/font], the same one-frame hold MWScript's [font=Courier New]SkipAnim[/font] uses) for [b]Frames Held At The Hit Key[/b] frames. When the victim's answer arrives the hold is released and the real hit stop takes over - or, on a miss, nothing happens and the swing carries on. Two frames is usually right. Set it to 0 to turn the hold off and accept a slightly late stop.
+
+Enemies attacking you get the same hold, so their weapon stops on you rather than past you.
+
+[size=4][b]Kill slow motion[/b][/size]
+
+Moved here out of Dynamic Reticle, with the encounter logic it was missing.
+
+OpenMW's combat music is driven by a script on every NPC and creature that watches its own combat targets and reports every change to the player. That is the engine's own "a fight is on / the fight is over" signal - the same one that starts and stops the battle playlist - and this mod listens to it. So when you kill somebody it knows whether anyone else is still fighting you, and the kill that ends the encounter gets the slow motion [b]every time[/b].
+
+Any other kill only rolls for it, on a chance that ships at [b]0[/b] so the encounter behaviour can be tested on its own. Turn it up for slow motion scattered through a fight.
+
+It keeps working with combat music switched off.
+
+[size=4][b]Camera shake[/b][/size]
+
+Rides along with the hit stop, decaying over about a fifth of a second, stronger when the hit lands on you. With [b]Dynamic Camera[/b] installed it goes through that mod's extra angle API, so the two add up instead of overwriting each other.
+
+[size=4][b]Kill vignette[/b][/size]
+
+A quick post processing pulse on a kill: the screen edges sink and the middle lifts. It is a gamma bend rather than a colour wash - the frame keeps its own colours, blacks stay black, nothing clips.
+
+[size=4][b]Sparks[/b][/size]
+
+Morrowind spark effects are particles, and OpenMW draws NIF particles as camera-facing squares: it parses [font=Courier New]NiParticleRotation[/font] and then ignores it ([font=Courier New]nifloader.cpp[/font], "RC_NiParticleRotation // unused"), and there is no velocity-aligned particle mode. A stretched particle sprite would lie down in the same screen direction for every spark, which looks wrong.
+
+So the long sparks in this mod are not particles. Each one is a pair of quads crossed along its own axis, flying a ballistic arc that is [b]baked into keyframes[/b] by [font=Courier New]tools/make_sparks.py[/font], turned at every key to face the direction it is travelling at that moment - so the streak bends over as the spark falls. The crossed pair keeps it visible from any angle; both triangle windings are written so backface culling cannot hide it. Around them are the ordinary particle sparkles, smaller than vanilla, blue-white instead of yellow, and pulled down by gravity.
+
+These are mesh replacers for [font=Courier New]meshes/e/impact/metalSpark.nif[/font], [font=Courier New]parrySpark.nif[/font] and [font=Courier New]shieldBlock.nif[/font], so they apply to whatever plays them - normally OpenMW Impact Effects. To go back to the originals, delete this mod's [font=Courier New]meshes/e/impact[/font] folder.
+
+[b]Where sparks already happen:[/b] Impact Effects raycasts each swing, works out what it struck, and sparks off bare metal, shields, ice armour and [i]heavy armour on the body[/i] - it picks the helmet, cuirass or greaves by how high the hit landed, so it is not shield-only. Medium armour is the gap: it gets a sound and no sparks. [b]Sparks On Medium Armour[/b] in the settings fills that in.
+
+[b]Light flash:[/b] sparks can throw a very short lived light where they appear (off-white blue, ~0.1s). NIF lights are not loaded by OpenMW, so this is a real light record spawned by the mod, from a pool of three objects that are parked disabled and reused rather than created and destroyed per hit.
+
+[size=5][b]Settings[/b][/size]
+
+Everything above is in Options → Scripts → [b]Cinematic Combat[/b], in four groups: Hit Stop, Kill Slow Motion, Camera Shake and Impact Effects.
+
+[size=5][b]Installing[/b][/size]
+
+[size=5][b]Credits[/b][/size]
+
+Max Yari. Spark meshes and textures generated with Greatness7's [font=Courier New]es3[/font] library.

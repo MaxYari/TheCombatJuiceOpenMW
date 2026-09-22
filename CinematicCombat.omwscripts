@@ -1,0 +1,3 @@
+PLAYER: scripts\MaxYari\cinematic combat\player.lua
+NPC, CREATURE: scripts\MaxYari\cinematic combat\actor.lua
+GLOBAL: scripts\MaxYari\cinematic combat\global.lua

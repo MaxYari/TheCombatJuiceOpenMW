@@ -1,0 +1,101 @@
+// Cinematic Combat - the pulse that plays on a kill.
+//
+// Not a colour overlay: the edges and the middle of the screen are pushed
+// through different gamma curves, so the frame keeps its own colours while the
+// corners sink into shadow and the centre lifts. A touch of extra saturation
+// and a wide bloom-ish lift on the brightest pixels sell the moment.
+
+uniform_float uStrength {
+    default = 0.0;
+    min = 0.0;
+    max = 2.0;
+    step = 0.01;
+    display_name = "Kill Pulse Strength";
+    description = "Driven by the mod, 0 when nothing is happening.";
+    static = false;
+}
+
+uniform_float uEdgeDarken {
+    default = 1.6;
+    min = 0.0;
+    max = 4.0;
+    step = 0.05;
+    display_name = "Edge Gamma";
+    description = "How much gamma is added at the screen edges. Higher is darker.";
+}
+
+uniform_float uCenterLift {
+    default = 0.3;
+    min = 0.0;
+    max = 0.9;
+    step = 0.01;
+    display_name = "Centre Gamma Lift";
+    description = "How much gamma is taken away in the middle. Higher is brighter.";
+}
+
+uniform_float uInnerRadius {
+    default = 0.15;
+    min = 0.0;
+    max = 1.0;
+    step = 0.01;
+    display_name = "Inner Radius";
+}
+
+uniform_float uOuterRadius {
+    default = 0.78;
+    min = 0.1;
+    max = 1.5;
+    step = 0.01;
+    display_name = "Outer Radius";
+}
+
+uniform_float uSaturation {
+    default = 0.25;
+    min = 0.0;
+    max = 1.0;
+    step = 0.01;
+    display_name = "Extra Saturation";
+}
+
+fragment killflash {
+    omw_In vec2 omw_TexCoord;
+
+    void main()
+    {
+        vec4 scene = omw_GetLastShader(omw_TexCoord);
+
+        if (uStrength <= 0.0)
+        {
+            omw_FragColor = scene;
+            return;
+        }
+
+        float strength = min(uStrength, 2.0);
+
+        // Distance from the middle of the screen, corrected so the vignette is
+        // round rather than stretched with the window.
+        vec2 offset = omw_TexCoord - vec2(0.5);
+        offset.x *= omw.rcpResolution.y / omw.rcpResolution.x;
+        float vignette = smoothstep(uInnerRadius, uOuterRadius, length(offset) * 2.0);
+
+        // One gamma ramp across the screen: below 1 in the middle (brighter),
+        // above 1 at the edges (darker). Applying it as a power keeps black at
+        // black and white at white, so nothing is washed out or clipped.
+        float gamma = mix(1.0 - uCenterLift * strength, 1.0 + uEdgeDarken * strength, vignette);
+        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(gamma));
+
+        // Push the colour that survives in the middle a little further.
+        float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color = mix(color, mix(vec3(luma), color, 1.0 + uSaturation * strength), 1.0 - vignette);
+
+        omw_FragColor = vec4(color, scene.a);
+    }
+}
+
+technique {
+    passes = killflash;
+    description = "Cinematic Combat: a quick gamma vignette on a kill.";
+    version = "1.0";
+    author = "Max Yari";
+    dynamic = true;
+}
