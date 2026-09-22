@@ -15,15 +15,30 @@ M.timeScale = 1
 M.skipAnimCalls = 0
 M.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
 
+M.subscribers = {}
+
+-- Storage sections notify their subscribers on a write, the way the engine's do:
+-- that is how the mod's settings cache learns a setting changed.
 local function makeSection(tbl, name)
     tbl[name] = tbl[name] or {}
+    M.subscribers[name] = M.subscribers[name] or {}
     local section = {}
     function section:get(key) return tbl[name][key] end
-    function section:set(key, value) tbl[name][key] = value end
-    function section:subscribe(cb) end
+    function section:set(key, value)
+        tbl[name][key] = value
+        for _, cb in ipairs(M.subscribers[name]) do cb(name, key) end
+    end
+    function section:subscribe(cb) table.insert(M.subscribers[name], cb) end
     function section:asTable() return tbl[name] end
     function section:setLifeTime() end
     return section
+end
+
+-- Change a setting the way the options menu would.
+function M.setSetting(section, key, value)
+    M.settingsStore[section] = M.settingsStore[section] or {}
+    M.settingsStore[section][key] = value
+    for _, cb in ipairs(M.subscribers[section] or {}) do cb(section, key) end
 end
 
 local objectCounter = 0
@@ -158,8 +173,20 @@ packages["openmw.interfaces"] = {
         addDamageListener = function(fn) table.insert(M.damageListeners, fn) end,
         getCombatTargets = function() return M.mssTargets end,
     },
-    impactEffects = nil, -- set per test
+    impactEffects = nil, -- set by M.enableImpactEffects()
 }
+
+M.impactActorHandlers = {}
+M.impactObjectHandlers = {}
+
+function M.enableImpactEffects()
+    M.impactActorHandlers, M.impactObjectHandlers = {}, {}
+    packages["openmw.interfaces"].impactEffects = {
+        version = 107,
+        addHitActorHandler = function(fn) table.insert(M.impactActorHandlers, fn) end,
+        addHitObjectHandler = function(fn) table.insert(M.impactObjectHandlers, fn) end,
+    }
+end
 
 function M.selfFor(object)
     return setmetatable({ object = object, recordId = object.recordId, cell = object.cell },

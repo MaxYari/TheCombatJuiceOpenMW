@@ -19,67 +19,60 @@ local function checkbox(key, name, default, description)
     return { key = key, renderer = "checkbox", default = default, name = name, description = description }
 end
 
+-- When does an effect play? Every trigger this mod has offers the same choices,
+-- and a kill can satisfy several of them at once (see defs.TRIGGERS).
+local function trigger(key, name, default, description)
+    return {
+        key = key,
+        renderer = "select",
+        default = default,
+        argument = { l10n = 'CinematicCombat', items = DEFS.TRIGGER_ITEMS },
+        name = name,
+        description = description,
+    }
+end
+
 I.Settings.registerPage {
     key = 'CinematicCombatPage',
     l10n = 'CinematicCombat',
     name = 'Cinematic Combat',
-    description = "~~ Hit stops, kill slow motion, camera shake and better sparks. " ..
-        "The spark meshes are a mesh replacer and are always on - to turn them off, remove " ..
-        "the meshes/e/impact folder from this mod.",
-}
-
-I.Settings.registerGroup {
-    key = DEFS.settings.hitstop,
-    page = 'CinematicCombatPage',
-    l10n = 'CinematicCombat',
-    name = 'Hit Stop',
-    order = 1,
-    permanentStorage = true,
-    settings = {
-        checkbox('HitstopEnabled', 'Enable Hit Stops', true,
-            "Briefly slows the whole world down the moment a hit lands."),
-        number('HitstopTimeScale', 'Hit Stop Time Scale', 0.1, 0.01, 1,
-            "How slow the world gets during a hit stop. 0.1 is a tenth of normal speed. " ..
-            "Applied and released abruptly, no easing."),
-        number('HitstopDuration', 'Hit Stop Duration', 0.1, 0, 1,
-            "Seconds of real time the hit stop lasts."),
-        checkbox('HitstopOnPlayerHit', 'Hit Stop When You Get Hit', true,
-            "Also do a hit stop when an enemy lands a hit on you."),
-        checkbox('HitstopOnMiss', 'Hit Stop On Misses', false,
-            "Do a shorter hit stop when your attack is dodged or blocked by the dice roll."),
-        number('HitstopMissFactor', 'Miss Hit Stop Length', 0.5, 0, 1,
-            "Miss hit stop duration, as a fraction of the normal one."),
-        number('HitFreezeFrames', 'Frames Held At The Hit Key', 2, 0, 5,
-            "The attack animation is paused for this many frames the instant its hit key fires, " ..
-            "before anyone knows whether the attack landed. Without it the weapon swings a frame " ..
-            "or two past the contact pose while the hit result travels between scripts. " ..
-            "2 is usually right; drop to 0 if you dislike the hold on misses."),
-        checkbox('FreezeNpcAttacks', 'Hold Enemy Attacks Too', true,
-            "Applies the same hit key hold to enemies attacking you."),
-    },
+    description = "~~ Kill slow motion, an exposure blow-out on the kill, camera shake and better " ..
+        "sparks. The spark meshes are a mesh replacer and are always on - to turn them off, " ..
+        "remove the meshes/e/impact folder from this mod.",
 }
 
 I.Settings.registerGroup {
     key = DEFS.settings.slowdown,
     page = 'CinematicCombatPage',
     l10n = 'CinematicCombat',
-    name = 'Kill Slow Motion',
-    order = 2,
+    name = 'Slow Motion',
+    order = 1,
     permanentStorage = true,
     settings = {
-        checkbox('SlowdownEnabled', 'Enable Kill Slow Motion', true,
-            "Slow motion when you kill somebody. Moved here out of Dynamic Reticle."),
-        checkbox('SlowdownOnLastEnemy', 'Always On The Last Enemy', true,
-            "Guarantees the slow motion on the kill that ends a fight - the same 'nobody is " ..
-            "fighting any more' signal the engine uses to stop the combat music."),
-        number('SlowdownOnKillChance', 'Chance On Any Other Kill', 0, 0, 1,
-            "Chance of slow motion on a kill that does not end the fight. 0 means only the " ..
-            "last enemy of an encounter triggers it."),
-        number('SlowdownTimeScale', 'Slow Motion Time Scale', 0.2, 0.01, 1,
+        checkbox('SlowdownEnabled', 'Enable Slow Motion', true,
+            "Slow motion on a kill. There are two of them, a short dip and a long one; " ..
+            "when a kill qualifies for both, the longer one plays."),
+
+        trigger('SmallSlowdownTrigger', 'Short Slow Motion On', DEFS.TRIGGER.EveryKill,
+            "Which kills get the short dip."),
+        number('SmallSlowdownChance', 'Short Slow Motion Chance', 1, 0, 1,
+            "Chance it plays on a kill that qualifies. 1 is always."),
+        number('SmallSlowdownScale', 'Short Slow Motion Time Scale', 0.45, 0.01, 1,
             "How slow the world gets at the deepest point."),
-        number('SlowdownInTime', 'Ease In Time', 0.05, 0, 2, "Seconds of real time to slow down over."),
-        number('SlowdownHoldTime', 'Hold Time', 0.1, 0, 5, "Seconds of real time to stay slow."),
-        number('SlowdownOutTime', 'Ease Out Time', 0.3, 0, 5, "Seconds of real time to speed back up over."),
+        number('SmallSlowdownDuration', 'Short Slow Motion Duration', 0.22, 0.05, 10,
+            "Seconds of real time for the whole dip, easing in and out included."),
+
+        trigger('BigSlowdownTrigger', 'Long Slow Motion On', DEFS.TRIGGER.LongEncounterEnd,
+            "Which kills get the long one. It beats the short one whenever both qualify."),
+        number('BigSlowdownChance', 'Long Slow Motion Chance', 1, 0, 1,
+            "Chance it plays on a kill that qualifies. 1 is always."),
+        number('BigSlowdownScale', 'Long Slow Motion Time Scale', 0.2, 0.01, 1,
+            "How slow the world gets at the deepest point."),
+        number('BigSlowdownDuration', 'Long Slow Motion Duration', 0.45, 0.05, 10,
+            "Seconds of real time for the whole thing, easing in and out included."),
+
+        number('LongEncounterSeconds', 'A Long Fight Is This Many Seconds', 20, 0, 600,
+            "A fight counts as long once this much time has passed since it started."),
     },
 }
 
@@ -88,20 +81,39 @@ I.Settings.registerGroup {
     page = 'CinematicCombatPage',
     l10n = 'CinematicCombat',
     name = 'Camera Shake',
-    order = 3,
+    order = 2,
     permanentStorage = true,
     settings = {
         checkbox('ShakeEnabled', 'Enable Camera Shake', true,
-            "Shakes the camera along with the hit stop. Goes through Dynamic Camera's extra " ..
-            "angle API when that mod is installed, so the two don't fight over the camera."),
-        number('ShakeStrength', 'Shake Strength', 1.2, 0, 15,
+            "Shakes the camera when a hit lands. Goes through Dynamic Camera's extra angle API " ..
+            "when that mod is installed, so the two don't fight over the camera."),
+        number('ShakeStrength', 'Shake Strength', 1.0, 0, 15,
             "Peak shake angle in degrees."),
-        number('ShakeDuration', 'Shake Duration', 0.18, 0, 2,
+        number('ShakeDuration', 'Shake Duration', 0.3, 0, 2,
             "Seconds of real time the shake decays over."),
         number('ShakeFrequency', 'Shake Frequency', 38, 1, 120,
             "How fast the camera rattles, in wobbles per second."),
-        number('ShakeTakenHitFactor', 'Strength When You Are Hit', 1.5, 0, 5,
-            "Multiplies the shake when the hit lands on you rather than on your target."),
+        number('ShakeTakenHitFactor', 'Strength When You Are Hit', 0, 0, 5,
+            "Multiplies the shake when the hit lands on you rather than on your target. " ..
+            "0 means your own hits shake the camera and theirs do not."),
+    },
+}
+
+I.Settings.registerGroup {
+    key = DEFS.settings.flash,
+    page = 'CinematicCombatPage',
+    l10n = 'CinematicCombat',
+    name = 'Kill Flash',
+    order = 3,
+    permanentStorage = true,
+    settings = {
+        trigger('FlashTrigger', 'Kill Flash On', DEFS.TRIGGER.EveryKill,
+            "An exposure blow-out on the kill: highlights bloom out, the darks deepen and the " ..
+            "glare runs cold, the way a camera reacts to a sudden light."),
+        number('FlashStrength', 'Kill Flash Strength', 1.0, 0, 2,
+            "Multiplies the whole effect."),
+        number('FlashDuration', 'Kill Flash Duration', 0.8, 0.1, 5,
+            "Seconds of real time for the blow-out and the recovery."),
     },
 }
 
@@ -109,18 +121,10 @@ I.Settings.registerGroup {
     key = DEFS.settings.effects,
     page = 'CinematicCombatPage',
     l10n = 'CinematicCombat',
-    name = 'Impact Effects',
+    name = 'Impact Lights',
     order = 4,
     permanentStorage = true,
     settings = {
-        checkbox('KillFlashEnabled', 'Kill Vignette', true,
-            "A quick post processing pulse on a kill: the screen edges drop into shadow while " ..
-            "the middle lifts. It is a gamma bend rather than a colour wash, so the image " ..
-            "keeps its own colours."),
-        number('KillFlashStrength', 'Kill Vignette Strength', 1.0, 0, 2,
-            "Multiplies both the darkening and the brightening."),
-        number('KillFlashDuration', 'Kill Vignette Duration', 0.45, 0.05, 3,
-            "Seconds of real time for the whole pulse."),
         checkbox('SparkLightEnabled', 'Light Flash On Sparks', true,
             "Spawns a very short lived light where sparks appear. Needs OpenMW Impact Effects, " ..
             "which is what decides where sparks happen."),
@@ -135,15 +139,26 @@ I.Settings.registerGroup {
             name = 'Spark Light Colour',
             description = "Changing this makes a new light record the first time it is used.",
         },
-        checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', false,
+
+        checkbox('HitLightEnabled', 'Light Flash On Other Hits', true,
+            "A weaker, warmer version of the same flash for hits that throw no sparks - flesh, " ..
+            "cloth, light armour. Meant to be barely noticed."),
+        number('HitLightRadius', 'Other Hit Light Radius', 90, 20, 600,
+            "Radius of that light in game units."),
+        number('HitLightDuration', 'Other Hit Light Duration', 0.06, 0.01, 1,
+            "Seconds of real time the light stays on."),
+        {
+            key = 'HitLightColor',
+            renderer = 'color',
+            default = util.color.rgb(1.0, 0.86, 0.6),
+            name = 'Other Hit Light Colour',
+            description = "Changing this makes a new light record the first time it is used.",
+        },
+
+        checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', true,
             "Impact Effects already sparks off heavy armour, shields and metal, but medium " ..
-            "armour only gets a sound. Turn this on to spark off medium armour as well."),
+            "armour only gets a sound. This sparks off medium armour as well."),
     },
 }
 
-return {
-    hitstop = DEFS.settings.hitstop,
-    slowdown = DEFS.settings.slowdown,
-    camera = DEFS.settings.camera,
-    effects = DEFS.settings.effects,
-}
+return DEFS.settings

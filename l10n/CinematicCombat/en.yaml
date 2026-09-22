@@ -1,5 +1,8 @@
 # Setting names and descriptions are written out in English in settings.lua and
-# are used as they are when a player's language has no translation for them.
-# This file exists so the engine finds a language file for this mod's l10n
-# context; translations can be added here as "English string": "translation".
-Cinematic Combat: "Cinematic Combat"
+# used as they are when a player's language has no translation for them. The
+# "select" renderer, though, looks every option up in here, so the slow motion
+# and kill flash triggers need an entry.
+"Never": "Never"
+"Every kill": "Every kill"
+"Encounter end": "Last enemy of a fight"
+"Long encounter end": "Last enemy of a long fight"

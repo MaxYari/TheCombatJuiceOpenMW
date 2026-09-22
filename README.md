@@ -1,9 +1,9 @@
 # Cinematic Combat
 
-An OpenMW Lua mod that makes melee land harder: the world stops for a beat on
-every hit, drops into slow motion on the kill that ends a fight, shakes the
-camera, dims the screen edges for a moment, and replaces Morrowind's spark
-effect with one made of streaks that fly the way they are actually moving.
+An OpenMW Lua mod that makes melee land harder: kills drop the world into slow
+motion, the camera shakes when a hit connects, the screen blows out like a
+camera caught by a sudden light, and Morrowind's spark effect is replaced with
+one made of streaks that fly the way they are actually moving.
 
 Needs **OpenMW 0.51** or newer and **[Max Yari's Script Services (MSS)](https://www.nexusmods.com/morrowind/mods/60256)**.
 **[OpenMW Impact Effects](https://www.nexusmods.com/morrowind/mods/55508)** is
@@ -11,56 +11,46 @@ optional but strongly recommended - it is what decides where sparks happen.
 
 ## What it does
 
-### Hit stop
+### Slow motion
 
-The instant a hit lands, the whole simulation drops to a fraction of its speed
-for a tenth of a second and snaps back. No easing - an abrupt stop reads as
-impact, a smooth one reads as slow motion.
+Two of them, and every kill is checked against both:
 
-The awkward part is timing. The engine fires the attack animation's hit key,
-applies the hit, and only the *victim* is told whether it landed; that answer
-comes back to the attacker an update or two later, by which time the weapon has
-swung past the contact pose and the stop lands on the follow through.
+* a **short** dip, on every kill by default;
+* a **long** one, on the last enemy of a long fight by default.
 
-So this mod holds the swing itself. The moment the hit key fires, before anybody
-knows the result, the attacker's animation is paused (`skipAnimationThisFrame`,
-the same one-frame hold MWScript's `SkipAnim` uses) for **Frames Held At The Hit
-Key** frames. When the victim's answer arrives the hold is released and the real
-hit stop takes over - or, on a miss, nothing happens and the swing carries on.
-Two frames is usually right. Set it to 0 to turn the hold off and accept a
-slightly late stop.
+Each has its own trigger, chance, time scale and duration. A trigger is the
+loosest case it accepts - *every kill*, *last enemy of a fight*, *last enemy of a
+long fight*, or *never* - and a kill qualifies if it is that case or a stricter
+one. Since the kill that ends a long fight is also an ordinary kill, both can
+qualify at once; when they do, **the longer one wins**. A fight counts as long
+once it has been going for 20 seconds, which is itself a setting.
 
-Enemies attacking you get the same hold, so their weapon stops on you rather
-than past you.
-
-### Kill slow motion
-
-Moved here out of Dynamic Reticle, with the encounter logic it was missing.
-
-OpenMW's combat music is driven by a script on every NPC and creature that
-watches its own combat targets and reports every change to the player. That is
-the engine's own "a fight is on / the fight is over" signal - the same one that
-starts and stops the battle playlist - and this mod listens to it. So when you
-kill somebody it knows whether anyone else is still fighting you, and the kill
-that ends the encounter gets the slow motion **every time**.
-
-Any other kill only rolls for it, on a chance that ships at **0** so the
-encounter behaviour can be tested on its own. Turn it up for slow motion
-scattered through a fight.
-
-It keeps working with combat music switched off.
+Knowing which kill ended the fight comes from the engine. OpenMW's combat music
+is driven by a script on every NPC and creature that watches its own combat
+targets and reports every change to the player - the same signal that starts and
+stops the battle playlist. This mod listens to it, so it knows who is still
+fighting you and how long they have been at it. It keeps working with combat
+music switched off.
 
 ### Camera shake
 
-Rides along with the hit stop, decaying over about a fifth of a second, stronger
-when the hit lands on you. With **Dynamic Camera** installed it goes through
-that mod's extra angle API, so the two add up instead of overwriting each other.
+Fires when a hit lands, decaying over a third of a second. Hits you take don't
+shake the camera unless you turn that up. With **Dynamic Camera** installed it
+goes through that mod's extra angle API, so the two add up instead of
+overwriting each other.
 
-### Kill vignette
+### Kill flash
 
-A quick post processing pulse on a kill: the screen edges sink and the middle
-lifts. It is a gamma bend rather than a colour wash - the frame keeps its own
-colours, blacks stay black, nothing clips.
+An exposure blow-out, not a vignette: highlights bloom out and smear towards the
+middle of the screen, the darks fall away, the glare runs cold, and the whole
+frame lifts - a camera, or an eye, caught by a light it was not ready for. It
+snaps in over a couple of frames and takes most of a second to recover.
+
+It runs as two passes: a quarter resolution bright pass, then a composite that
+spreads that buffer back over the image. Everything about it - glare amount,
+threshold, radius, streak length, exposure, shadow crush and tint - is a uniform
+you can tune live from the post processing HUD. It takes the same trigger
+setting as the slow motion, so it can be limited to the end of a fight.
 
 ### Sparks
 
@@ -94,15 +84,17 @@ armour on the body* - it picks the helmet, cuirass or greaves by how high the
 hit landed, so it is not shield-only. Medium armour is the gap: it gets a sound
 and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 
-**Light flash:** sparks can throw a very short lived light where they appear
-(off-white blue, ~0.1s). NIF lights are not loaded by OpenMW, so this is a real
-light record spawned by the mod, from a pool of three objects that are parked
-disabled and reused rather than created and destroyed per hit.
+**Impact lights:** sparks throw a very short lived light where they appear
+(cold blue, ~0.1s), and hits that spark off nothing - flesh, cloth, light
+armour - get a weaker, warmer one that is meant to go unnoticed. NIF lights are
+not loaded by OpenMW, so these are real light records spawned by the mod, from a
+pool of three objects per colour that are parked disabled and reused rather than
+created and destroyed per hit.
 
 ## Settings
 
 Everything above is in Options → Scripts → **Cinematic Combat**, in four groups:
-Hit Stop, Kill Slow Motion, Camera Shake and Impact Effects.
+Slow Motion, Camera Shake, Kill Flash and Impact Lights.
 
 ## Installing
 
@@ -132,11 +124,20 @@ niftest -q meshes/
 ```
 
 The scripts can be exercised without starting the game - `tools/tests/` stubs
-the OpenMW Lua API and drives the real files through a swing, a miss, an
-encounter, a kill and the time scale effects:
+the OpenMW Lua API and drives the real files through hits, kills, short and long
+fights, every trigger, the time scale and the impact lights:
 
 ```sh
 lua tools/tests/test.lua "scripts/MaxYari/cinematic combat"
+```
+
+The shader has its own checker, which applies the rules OpenMW's `.omwfx` parser
+enforces - most usefully that comments are only legal inside GLSL blocks, since
+a stray one anywhere else fails the whole file and, because the mod loads the
+shader from Lua, would take the script down with it:
+
+```sh
+python3 tools/check_omwfx.py shaders/*.omwfx
 ```
 
 ## Releasing

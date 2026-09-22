@@ -1,7 +1,8 @@
--- Cinematic Combat - hit stops, kill slow motion, camera shake and impact extras.
+-- Cinematic Combat - kill slow motion, an exposure blow-out on the kill,
+-- camera shake and impact lights.
 -- Mod version, published to Nexus by .github/workflows/nexus-release.yml
 -- (the first `version = ...` in this file)
-local VERSION = "1.0"
+local VERSION = "1.1"
 
 local mp = "scripts/MaxYari/cinematic combat/"
 
@@ -9,9 +10,6 @@ local omwself = require("openmw.self")
 local core = require("openmw.core")
 local camera = require("openmw.camera")
 local types = require("openmw.types")
-local animation = require("openmw.animation")
-local storage = require("openmw.storage")
-local async = require("openmw.async")
 local ui = require("openmw.ui")
 local I = require("openmw.interfaces")
 
@@ -27,9 +25,9 @@ if not core.contentFiles.has("MaxYariScriptServices.omwscripts") then
     ui.showMessage("Cinematic Combat: Critical dependency is missing, please install Max Yari's Script Services (MSS)")
 end
 
-local hitstopSettings = SettingsHelper:new(DEFS.settings.hitstop)
 local slowdownSettings = SettingsHelper:new(DEFS.settings.slowdown)
 local cameraSettings = SettingsHelper:new(DEFS.settings.camera)
+local flashSettings = SettingsHelper:new(DEFS.settings.flash)
 local effectSettings = SettingsHelper:new(DEFS.settings.effects)
 
 local selfObject = omwself.object
@@ -38,17 +36,25 @@ local function now()
     return core.getRealTime()
 end
 
--- Encounter tracking --------------------------------------------------------
+-- Encounters ----------------------------------------------------------------
 --
 -- OpenMW's combat music is driven by scripts/omw/music/actor.lua, which runs on
 -- every NPC and creature, watches its own combat targets and sends every change
 -- to the player as OMWMusicCombatTargetsChanged. That is the engine's own "a
 -- fight is on / the fight is over" signal - the same one that starts and stops
--- the battle playlist - so listening to it here tells us when a kill was the
--- last enemy standing. It keeps working with combat music turned off.
+-- the battle playlist - so listening to it tells us when a kill was the last
+-- enemy standing, and how long the fight had been going. It keeps working with
+-- combat music turned off.
 
 local fighters = {} -- [actorId] = { actor = GameObject, targetsPlayer = boolean }
+local encounterStartedAt = nil
 local lastSeenFightingUs = -1000
+
+-- Enemies that die before they ever draw a weapon are never reported as
+-- fighting us, and one that runs away drops out of the table too. So a kill
+-- counts as part of an encounter if the victim was fighting us, or if anything
+-- was, recently enough.
+local ENCOUNTER_MEMORY = 5.0
 
 local function onCombatTargetsChanged(data)
     local actor = data.actor
@@ -65,14 +71,11 @@ local function onCombatTargetsChanged(data)
         end
     end
     fighters[actor.id] = { actor = actor, targetsPlayer = targetsPlayer }
-    if targetsPlayer then lastSeenFightingUs = now() end
+    if targetsPlayer then
+        lastSeenFightingUs = now()
+        if not encounterStartedAt then encounterStartedAt = now() end
+    end
 end
-
--- Enemies that die before they ever draw a weapon are never reported as
--- fighting us, and one that runs away drops out of the table too. So a kill
--- counts as part of an encounter if the victim was fighting us, or if anything
--- was, recently enough.
-local ENCOUNTER_MEMORY = 5.0
 
 -- How many actors are still fighting the player, ignoring `excluded`.
 local function enemiesLeft(excluded)
@@ -87,6 +90,38 @@ local function enemiesLeft(excluded)
         end
     end
     return count
+end
+
+-- What this kill counts as: the loosest trigger it satisfies, plus how strict
+-- it is allowed to be. Nothing here rolls dice or reads settings.
+local function classifyKill(victim)
+    local entry = victim and fighters[victim.id]
+    local inEncounter = (entry ~= nil and entry.targetsPlayer)
+        or (now() - lastSeenFightingUs < ENCOUNTER_MEMORY)
+    if victim then fighters[victim.id] = nil end
+
+    local endsEncounter = inEncounter and enemiesLeft(victim) == 0
+    local fightLength = (endsEncounter and encounterStartedAt) and (now() - encounterStartedAt) or 0
+    local wasLong = endsEncounter and fightLength >= (slowdownSettings.LongEncounterSeconds or 20)
+
+    if endsEncounter then encounterStartedAt = nil end
+
+    return {
+        rank = wasLong and DEFS.TRIGGER_RANK[DEFS.TRIGGER.LongEncounterEnd]
+            or (endsEncounter and DEFS.TRIGGER_RANK[DEFS.TRIGGER.EncounterEnd])
+            or DEFS.TRIGGER_RANK[DEFS.TRIGGER.EveryKill],
+        endsEncounter = endsEncounter,
+        wasLong = wasLong,
+        fightLength = fightLength,
+    }
+end
+
+-- A kill qualifies for a trigger when the kill is at least as strict as the
+-- trigger asks: "every kill" takes anything, "long encounter end" only the one
+-- kill that ends a long fight.
+local function qualifies(kill, triggerValue)
+    local want = DEFS.TRIGGER_RANK[triggerValue]
+    return want ~= nil and kill.rank >= want
 end
 
 -- Camera shake --------------------------------------------------------------
@@ -137,128 +172,137 @@ local function updateShake()
         amplitude * gutils.noise(f * 1.17 + shake.seed + 41.7) * 1.35)
 end
 
--- Kill vignette -------------------------------------------------------------
-
+-- Kill flash ----------------------------------------------------------------
+--
 -- postprocessing.load throws if the shader does not compile or post processing
--- is off, and an error out here would take the whole script - hit stops and all
--- - down with it. The vignette is the only thing that should be lost.
-local killFlashShader
+-- is off, and an error out here would take the whole script down with it. The
+-- flash is the only thing that should be lost.
+local flashShader
 do
     local ok, wrapper = pcall(shaderUtils.ShaderWrapper.new, shaderUtils.ShaderWrapper,
         "cc_killflash", { uStrength = 0 })
     if ok then
-        killFlashShader = wrapper
+        flashShader = wrapper
     else
-        gutils.print("kill vignette is off, its shader did not load: " .. tostring(wrapper), 1)
+        gutils.print("kill flash is off, its shader did not load: " .. tostring(wrapper), 1)
     end
 end
 
-local killFlash = nil -- { startedAt, duration, strength }
+local flash = nil -- { startedAt, duration, strength }
 
-local function startKillFlash()
-    if not killFlashShader or not effectSettings.KillFlashEnabled then return end
-    local duration = effectSettings.KillFlashDuration or 0
+local function startFlash()
+    if not flashShader then return end
+    local duration = flashSettings.FlashDuration or 0
     if duration <= 0 then return end
-    killFlash = { startedAt = now(), duration = duration, strength = effectSettings.KillFlashStrength or 1 }
-    killFlashShader:enable()
+    flash = { startedAt = now(), duration = duration, strength = flashSettings.FlashStrength or 1 }
+    flashShader:enable()
 end
 
-local function updateKillFlash()
-    if not killFlash then return end
-    local t = (now() - killFlash.startedAt) / killFlash.duration
+-- Blown out in a couple of frames, held for a moment, then a long recovery -
+-- an eye, or a camera, catching up with the light.
+local function flashEnvelope(t)
+    if t < 0.06 then return t / 0.06 end
+    if t < 0.30 then return 1 end
+    return (1 - (t - 0.30) / 0.70) ^ 1.8
+end
+
+local function updateFlash()
+    if not flash then return end
+    local t = (now() - flash.startedAt) / flash.duration
     if t >= 1 then
-        killFlash = nil
-        killFlashShader.u.uStrength = 0
-        killFlashShader:disable()
+        flash = nil
+        flashShader.u.uStrength = 0
+        flashShader:disable()
         return
     end
-    -- Snap in, ease out.
-    local envelope = t < 0.18 and (t / 0.18) or (1 - (t - 0.18) / 0.82) ^ 1.6
-    killFlashShader.u.uStrength = killFlash.strength * envelope
+    flashShader.u.uStrength = flash.strength * flashEnvelope(t)
 end
 
--- Hit stop ------------------------------------------------------------------
+-- Kills ---------------------------------------------------------------------
 
-local freezeFramesLeft = 0
-
-local function isHitKey(key)
-    if key == "hit" then return true end
-    return key:sub(-4) == " hit" and not key:find("min hit", 1, true)
+local function requestSlowdown(scale, duration)
+    -- One duration knob per slow motion; the shape of the dip is fixed at the
+    -- proportions the old in/hold/out settings defaulted to.
+    core.sendGlobalEvent(DEFS.e.Slowdown, {
+        scale = scale,
+        inTime = duration * 0.11,
+        hold = duration * 0.22,
+        outTime = duration * 0.67,
+    })
 end
 
--- The engine fires the hit key, applies the hit, and only the victim learns
--- whether it landed; its answer reaches us an update or two later. So the
--- attack animation is held here the instant the key fires, before anyone knows
--- the result, and the real hit stop takes over when the answer arrives.
-I.AnimationController.addTextKeyHandler(nil, function(_, key)
-    if not hitstopSettings.HitstopEnabled then return end
-    if not isHitKey(key) then return end
-    local frames = hitstopSettings.HitFreezeFrames or 0
-    if frames <= 0 then return end
-    freezeFramesLeft = frames
-end)
+local function onActorKilled(data)
+    local kill = classifyKill(data.victim)
 
-local function triggerHitstop(successful, strengthMult)
-    if not hitstopSettings.HitstopEnabled then return end
-    if not successful and not hitstopSettings.HitstopOnMiss then return end
-    local duration = hitstopSettings.HitstopDuration or 0
-    if not successful then duration = duration * (hitstopSettings.HitstopMissFactor or 0.5) end
-    if duration > 0 then
-        core.sendGlobalEvent(DEFS.e.TimeEffect, {
-            kind = "hitstop",
-            scale = hitstopSettings.HitstopTimeScale or 0.1,
-            duration = duration,
-        })
+    if slowdownSettings.SlowdownEnabled then
+        -- Both can qualify for the same kill. Work out which ones do, then take
+        -- the longer of them.
+        local best = nil
+        local candidates = {
+            {
+                trigger = slowdownSettings.SmallSlowdownTrigger,
+                chance = slowdownSettings.SmallSlowdownChance,
+                scale = slowdownSettings.SmallSlowdownScale or 0.45,
+                duration = slowdownSettings.SmallSlowdownDuration or 0.22,
+            },
+            {
+                trigger = slowdownSettings.BigSlowdownTrigger,
+                chance = slowdownSettings.BigSlowdownChance,
+                scale = slowdownSettings.BigSlowdownScale or 0.2,
+                duration = slowdownSettings.BigSlowdownDuration or 0.45,
+            },
+        }
+        for _, c in ipairs(candidates) do
+            if qualifies(kill, c.trigger) and math.random() < (c.chance or 0) then
+                if not best or c.duration > best.duration then best = c end
+            end
+        end
+        if best then requestSlowdown(best.scale, best.duration) end
     end
-    if successful then startShake(strengthMult) end
+
+    if qualifies(kill, flashSettings.FlashTrigger) then startFlash() end
+end
+
+-- Hits ----------------------------------------------------------------------
+
+local lastSparkLightAt = -1000
+
+-- A hit that threw no sparks gets the weaker, warmer light. With Impact Effects
+-- installed the material decides; without it every hit takes this path.
+local function hitLight(hitPos)
+    if not effectSettings.HitLightEnabled or not hitPos then return end
+    if now() - lastSparkLightAt < 0.1 then return end -- sparks already lit this one
+    local color = effectSettings.HitLightColor
+    core.sendGlobalEvent(DEFS.e.SpawnLight, {
+        player = selfObject,
+        pos = hitPos,
+        radius = effectSettings.HitLightRadius or 90,
+        duration = effectSettings.HitLightDuration or 0.06,
+        r = color and color.r or 1.0,
+        g = color and color.g or 0.86,
+        b = color and color.b or 0.6,
+    })
 end
 
 -- Sent by the actor we hit, from its own I.Combat hit handler.
 local function onAttackLanded(data)
-    -- The answer is here, so the blind hold is done: either the hit stop takes
-    -- over on the next update, or the attack missed and nothing should hold.
-    freezeFramesLeft = 0
-    triggerHitstop(data.successful, 1)
+    if not data.successful then return end
+    startShake(1)
+    hitLight(data.hitPos)
 end
 
 -- Somebody landed a hit on us.
 I.Combat.addOnHitHandler(function(attack)
-    if not hitstopSettings.HitstopOnPlayerHit then return end
     if not attack.successful then return end
-    triggerHitstop(true, cameraSettings.ShakeTakenHitFactor or 1.5)
+    local factor = cameraSettings.ShakeTakenHitFactor or 0
+    if factor > 0 then startShake(factor) end
 end)
-
--- Kills ---------------------------------------------------------------------
-
-local function onActorKilled(data)
-    local victim = data.victim
-    local entry = victim and fighters[victim.id]
-    local inEncounter = (entry ~= nil and entry.targetsPlayer)
-        or (now() - lastSeenFightingUs < ENCOUNTER_MEMORY)
-    if victim then fighters[victim.id] = nil end
-
-    startKillFlash()
-
-    if not slowdownSettings.SlowdownEnabled then return end
-    local lastOne = inEncounter and enemiesLeft(victim) == 0
-    local guaranteed = lastOne and slowdownSettings.SlowdownOnLastEnemy
-    local rolled = math.random() < (slowdownSettings.SlowdownOnKillChance or 0)
-    if not guaranteed and not rolled then return end
-
-    core.sendGlobalEvent(DEFS.e.TimeEffect, {
-        kind = "slowdown",
-        scale = slowdownSettings.SlowdownTimeScale or 0.2,
-        inTime = slowdownSettings.SlowdownInTime or 0.05,
-        hold = slowdownSettings.SlowdownHoldTime or 0.1,
-        outTime = slowdownSettings.SlowdownOutTime or 0.3,
-    })
-end
 
 -- Impact Effects hooks ------------------------------------------------------
 --
 -- Impact Effects raycasts every swing, works out what was struck and plays the
 -- spark meshes this mod replaces. Hooking it is how we learn where a spark just
--- happened without doing any of that work again.
+-- happened, and what was hit, without doing any of that work again.
 
 local impactHooksDone = false
 
@@ -266,82 +310,60 @@ local function setUpImpactHooks()
     if impactHooksDone or not I.impactEffects then return end
     impactHooksDone = true
 
-    local function onImpact(o, var)
+    I.impactEffects.addHitActorHandler(function(o, var)
         local material = var.material
-        if not material then return end
+        if not material or not var.hitPos then return end
 
-        if DEFS.sparkMaterials[material] and effectSettings.SparkLightEnabled and var.hitPos then
-            local color = effectSettings.SparkLightColor
-            core.sendGlobalEvent(DEFS.e.SparkFlash, {
-                player = selfObject,
-                pos = var.hitPos,
-                radius = effectSettings.SparkLightRadius or 160,
-                duration = effectSettings.SparkLightDuration or 0.09,
-                r = color and color.r or 0.62,
-                g = color and color.g or 0.78,
-                b = color and color.b or 1.0,
-            })
+        if DEFS.sparkMaterials[material] then
+            lastSparkLightAt = now()
+            if effectSettings.SparkLightEnabled then
+                local color = effectSettings.SparkLightColor
+                core.sendGlobalEvent(DEFS.e.SpawnLight, {
+                    player = selfObject,
+                    pos = var.hitPos,
+                    radius = effectSettings.SparkLightRadius or 160,
+                    duration = effectSettings.SparkLightDuration or 0.09,
+                    r = color and color.r or 0.62,
+                    g = color and color.g or 0.78,
+                    b = color and color.b or 1.0,
+                })
+            end
         end
 
         -- Impact Effects sparks off heavy armour, ice armour, shields and bare
         -- metal, but medium armour only gets a sound. Optionally fill that in.
-        if material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor and var.hitPos then
+        if material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor then
+            lastSparkLightAt = now()
             core.sendGlobalEvent("SpawnVfx", {
                 model = "meshes/e/impact/parrySpark.nif",
                 position = var.hitPos,
                 options = { mwMagicVfx = false, useAmbientLight = false, scale = 0.5 },
             })
         end
-    end
-
-    I.impactEffects.addHitActorHandler(onImpact)
-    I.impactEffects.addHitObjectHandler(onImpact)
+    end)
 end
-
--- Settings that actor scripts need ------------------------------------------
-
-local hitstopStore = storage.playerSection(DEFS.settings.hitstop)
-
-local function syncShared()
-    core.sendGlobalEvent(DEFS.e.SyncShared, {
-        freezeNpcAttacks = hitstopStore:get("HitstopEnabled") and hitstopStore:get("FreezeNpcAttacks"),
-        hitFreezeFrames = hitstopStore:get("HitFreezeFrames") or 0,
-    })
-end
-
-hitstopStore:subscribe(async:callback(syncShared))
 
 -- Engine handlers -----------------------------------------------------------
 
 local function onUpdate(dt)
     if dt <= 0 then return end
     setUpImpactHooks()
-
-    if freezeFramesLeft > 0 then
-        freezeFramesLeft = freezeFramesLeft - 1
-        animation.skipAnimationThisFrame(omwself)
-    end
 end
 
 local function onFrame()
     updateShake()
-    updateKillFlash()
+    updateFlash()
 end
 
 local function onLoad()
     fighters = {}
+    encounterStartedAt = nil
     shake = nil
-    killFlash = nil
-    freezeFramesLeft = 0
-    if killFlashShader then
-        killFlashShader.u.uStrength = 0
-        killFlashShader:disable()
+    flash = nil
+    if flashShader then
+        flashShader.u.uStrength = 0
+        flashShader:disable()
     end
-    syncShared()
-end
-
-local function onInit()
-    syncShared()
 end
 
 gutils.print("Cinematic Combat " .. VERSION .. " loaded", 1)
@@ -351,7 +373,6 @@ return {
         onUpdate = onUpdate,
         onFrame = onFrame,
         onLoad = onLoad,
-        onInit = onInit,
     },
     eventHandlers = {
         [DEFS.e.AttackLanded] = onAttackLanded,
@@ -360,11 +381,10 @@ return {
     },
     interfaceName = "CinematicCombat",
     interface = {
-        version = 1.0,
+        version = 1.1,
         shaders = shaderUtils.instances,
-        hitstop = function(scale, duration)
-            core.sendGlobalEvent(DEFS.e.TimeEffect, { kind = "hitstop", scale = scale, duration = duration })
-        end,
         shake = startShake,
+        flash = startFlash,
+        slowdown = requestSlowdown,
     },
 }

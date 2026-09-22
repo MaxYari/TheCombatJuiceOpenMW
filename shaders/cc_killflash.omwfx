@@ -3,54 +3,113 @@ uniform_float uStrength {
     min = 0.0;
     max = 2.0;
     step = 0.01;
-    display_name = "Kill Pulse Strength";
+    display_name = "Blow-out Strength";
     static = false;
 }
 
-uniform_float uEdgeDarken {
-    default = 1.6;
+uniform_float uGlow {
+    default = 1.45;
     min = 0.0;
-    max = 4.0;
+    max = 6.0;
     step = 0.05;
-    display_name = "Edge Gamma";
-    description = "How much gamma is added at the screen edges. Higher is darker.";
+    display_name = "Glare";
+    description = "How much of the blown out highlights is smeared back over the image.";
 }
 
-uniform_float uCenterLift {
-    default = 0.3;
-    min = 0.0;
-    max = 0.9;
-    step = 0.01;
-    display_name = "Centre Gamma Lift";
-    description = "How much gamma is taken away in the middle. Higher is brighter.";
-}
-
-uniform_float uInnerRadius {
-    default = 0.15;
+uniform_float uThreshold {
+    default = 0.5;
     min = 0.0;
     max = 1.0;
     step = 0.01;
-    display_name = "Inner Radius";
+    display_name = "Glare Threshold";
+    description = "Brightness a pixel needs before it starts to bloom.";
 }
 
-uniform_float uOuterRadius {
-    default = 0.78;
-    min = 0.1;
-    max = 1.5;
-    step = 0.01;
-    display_name = "Outer Radius";
-}
-
-uniform_float uSaturation {
-    default = 0.25;
+uniform_float uGlowRadius {
+    default = 0.055;
     min = 0.0;
-    max = 1.0;
-    step = 0.01;
-    display_name = "Extra Saturation";
+    max = 0.25;
+    step = 0.005;
+    display_name = "Glare Radius";
+    description = "How far the bloom spreads, as a fraction of screen height.";
 }
 
-fragment killflash {
+uniform_float uRadial {
+    default = 0.07;
+    min = 0.0;
+    max = 0.5;
+    step = 0.005;
+    display_name = "Radial Streaks";
+    description = "How far the glare is dragged towards the middle of the screen.";
+}
+
+uniform_float uExposure {
+    default = 0.22;
+    min = 0.0;
+    max = 2.0;
+    step = 0.01;
+    display_name = "Exposure Lift";
+    description = "Straight brightening of the whole image.";
+}
+
+uniform_float uContrast {
+    default = 0.5;
+    min = 0.0;
+    max = 2.0;
+    step = 0.01;
+    display_name = "Shadow Crush";
+    description = "Deepens what is already dark, the way an overexposed frame does. This is a tone curve over the whole image, not a vignette.";
+}
+
+uniform_vec3 uTint {
+    default = vec3(0.72, 0.94, 1.18);
+    min = vec3(0.0, 0.0, 0.0);
+    max = vec3(2.0, 2.0, 2.0);
+    display_name = "Glare Tint";
+    description = "Colour of the glare. Cold by default, the way a bright flash reads on camera.";
+}
+
+render_target RT_CCGlare {
+    width_ratio = 0.25;
+    height_ratio = 0.25;
+    min_filter = linear;
+    mag_filter = linear;
+    wrap_s = clamp_to_edge;
+    wrap_t = clamp_to_edge;
+}
+
+fragment cc_bright(target=RT_CCGlare) {
     omw_In vec2 omw_TexCoord;
+
+    void main()
+    {
+        if (uStrength <= 0.0)
+        {
+            omw_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+            return;
+        }
+
+        // Four full res taps per quarter res pixel, so nothing bright is missed.
+        vec2 o = omw.rcpResolution;
+        vec3 c = omw_GetLastShader(omw_TexCoord + vec2(-o.x, -o.y)).rgb;
+        c += omw_GetLastShader(omw_TexCoord + vec2(o.x, -o.y)).rgb;
+        c += omw_GetLastShader(omw_TexCoord + vec2(-o.x, o.y)).rgb;
+        c += omw_GetLastShader(omw_TexCoord + vec2(o.x, o.y)).rgb;
+        c *= 0.25;
+
+        float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float over = max(luma - uThreshold, 0.0) / max(1.0 - uThreshold, 0.001);
+
+        // Squared so the brightest parts of the frame dominate the glare.
+        omw_FragColor = vec4(c * over * over, 1.0);
+    }
+}
+
+fragment cc_flash(rt1=RT_CCGlare) {
+    omw_In vec2 omw_TexCoord;
+
+    const int GLARE_TAPS = 12;
+    const int STREAK_TAPS = 6;
 
     void main()
     {
@@ -62,32 +121,53 @@ fragment killflash {
             return;
         }
 
-        float strength = min(uStrength, 2.0);
+        float s = min(uStrength, 2.0);
+        vec2 aspect = vec2(omw.resolution.x / omw.resolution.y, 1.0);
 
-        // Distance from the middle of the screen, corrected so the vignette is
-        // round rather than stretched with the window.
-        vec2 offset = omw_TexCoord - vec2(0.5);
-        offset.x *= omw.rcpResolution.y / omw.rcpResolution.x;
-        float vignette = smoothstep(uInnerRadius, uOuterRadius, length(offset) * 2.0);
+        // Round bloom: a spiral of taps over the quarter res bright buffer,
+        // which is already soft from being downsampled with linear filtering.
+        vec3 glare = vec3(0.0);
+        float total = 0.0;
+        for (int i = 0; i < GLARE_TAPS; ++i)
+        {
+            float fi = float(i);
+            float angle = fi * 2.39996323;
+            float radius = sqrt((fi + 0.5) / float(GLARE_TAPS)) * uGlowRadius;
+            float weight = 1.0 - 0.55 * radius / max(uGlowRadius, 0.0001);
+            vec2 offset = vec2(cos(angle), sin(angle)) * radius / aspect;
+            glare += omw_Texture2D(RT_CCGlare, omw_TexCoord + offset).rgb * weight;
+            total += weight;
+        }
+        glare /= max(total, 0.0001);
 
-        // One gamma ramp across the screen: below 1 in the middle (brighter),
-        // above 1 at the edges (darker). Applying it as a power keeps black at
-        // black and white at white, so nothing is washed out or clipped.
-        float gamma = mix(1.0 - uCenterLift * strength, 1.0 + uEdgeDarken * strength, vignette);
-        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(gamma));
+        // Streaks dragged towards the middle, the smear of a camera whipping
+        // round to a light it was not exposed for.
+        vec3 streak = vec3(0.0);
+        float streakTotal = 0.0;
+        vec2 toCentre = vec2(0.5) - omw_TexCoord;
+        for (int i = 1; i <= STREAK_TAPS; ++i)
+        {
+            float f = float(i) / float(STREAK_TAPS);
+            float weight = 1.0 - 0.7 * f;
+            streak += omw_Texture2D(RT_CCGlare, omw_TexCoord + toCentre * f * uRadial).rgb * weight;
+            streakTotal += weight;
+        }
+        streak /= max(streakTotal, 0.0001);
 
-        // Push the colour that survives in the middle a little further.
-        float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-        color = mix(color, mix(vec3(luma), color, 1.0 + uSaturation * strength), 1.0 - vignette);
+        // Overexposure: the darks fall away, everything lifts, and the glare is
+        // added on top until the highlights clip.
+        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(1.0 + uContrast * s));
+        color *= 1.0 + uExposure * s;
+        color += (glare + streak) * uTint * uGlow * s;
 
         omw_FragColor = vec4(color, scene.a);
     }
 }
 
 technique {
-    passes = killflash;
-    description = "Cinematic Combat: a quick gamma vignette on a kill.";
-    version = "1.0";
+    passes = cc_bright, cc_flash;
+    description = "Cinematic Combat: an exposure blow-out on a kill.";
+    version = "1.1";
     author = "Max Yari";
     dynamic = true;
 }
