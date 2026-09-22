@@ -172,7 +172,7 @@ local function updateLights()
     local t = now()
     for id, entry in pairs(lights.busy) do
         if t >= entry.until_ then
-            if entry.obj:isValid() then entry.obj:setEnabled(false) end
+            if entry.obj:isValid() then entry.obj.enabled = false end
             lights.busy[id] = nil
         end
     end
@@ -231,7 +231,7 @@ local function onLoad(state)
         lights.key = state.lightKey
         lights.pool = state.lightPool or {}
         for _, obj in ipairs(lights.pool) do
-            if obj and obj:isValid() then obj:setEnabled(false) end
+            if obj and obj:isValid() then obj.enabled = false end
         end
     end
 end

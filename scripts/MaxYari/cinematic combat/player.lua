@@ -48,6 +48,7 @@ end
 -- last enemy standing. It keeps working with combat music turned off.
 
 local fighters = {} -- [actorId] = { actor = GameObject, targetsPlayer = boolean }
+local lastSeenFightingUs = -1000
 
 local function onCombatTargetsChanged(data)
     local actor = data.actor
@@ -64,7 +65,14 @@ local function onCombatTargetsChanged(data)
         end
     end
     fighters[actor.id] = { actor = actor, targetsPlayer = targetsPlayer }
+    if targetsPlayer then lastSeenFightingUs = now() end
 end
+
+-- Enemies that die before they ever draw a weapon are never reported as
+-- fighting us, and one that runs away drops out of the table too. So a kill
+-- counts as part of an encounter if the victim was fighting us, or if anything
+-- was, recently enough.
+local ENCOUNTER_MEMORY = 5.0
 
 -- How many actors are still fighting the player, ignoring `excluded`.
 local function enemiesLeft(excluded)
@@ -211,12 +219,15 @@ end)
 
 local function onActorKilled(data)
     local victim = data.victim
+    local entry = victim and fighters[victim.id]
+    local inEncounter = (entry ~= nil and entry.targetsPlayer)
+        or (now() - lastSeenFightingUs < ENCOUNTER_MEMORY)
     if victim then fighters[victim.id] = nil end
 
     startKillFlash()
 
     if not slowdownSettings.SlowdownEnabled then return end
-    local lastOne = enemiesLeft(victim) == 0
+    local lastOne = inEncounter and enemiesLeft(victim) == 0
     local guaranteed = lastOne and slowdownSettings.SlowdownOnLastEnemy
     local rolled = math.random() < (slowdownSettings.SlowdownOnKillChance or 0)
     if not guaranteed and not rolled then return end
@@ -276,19 +287,16 @@ end
 
 -- Settings that actor scripts need ------------------------------------------
 
+local hitstopStore = storage.playerSection(DEFS.settings.hitstop)
+
 local function syncShared()
     core.sendGlobalEvent(DEFS.e.SyncShared, {
-        freezeNpcAttacks = hitstopSettings.HitstopEnabled and hitstopSettings.FreezeNpcAttacks,
-        hitFreezeFrames = hitstopSettings.HitFreezeFrames or 0,
+        freezeNpcAttacks = hitstopStore:get("HitstopEnabled") and hitstopStore:get("FreezeNpcAttacks"),
+        hitFreezeFrames = hitstopStore:get("HitFreezeFrames") or 0,
     })
 end
 
-for _, section in ipairs({ DEFS.settings.hitstop }) do
-    storage.playerSection(section):subscribe(async:callback(function()
-        -- SettingsHelper has already refreshed its own copies by now.
-        syncShared()
-    end))
-end
+hitstopStore:subscribe(async:callback(syncShared))
 
 -- Engine handlers -----------------------------------------------------------
 

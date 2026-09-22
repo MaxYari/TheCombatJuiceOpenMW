@@ -127,6 +127,14 @@ Validate the result with the `niftest` tool that ships with OpenMW:
 niftest -q meshes/
 ```
 
+The scripts can be exercised without starting the game - `tools/tests/` stubs
+the OpenMW Lua API and drives the real files through a swing, a miss, an
+encounter, a kill and the time scale effects:
+
+```sh
+lua tools/tests/test.lua "scripts/MaxYari/cinematic combat"
+```
+
 ## Releasing
 
 `.github/workflows/nexus-release.yml` packs the mod and uploads it to Nexus on
