@@ -134,7 +134,8 @@ lua tools/tests/test.lua "scripts/MaxYari/cinematic combat"
 The shader has its own checker, which applies the rules OpenMW's `.omwfx` parser
 enforces - most usefully that comments are only legal inside GLSL blocks, since
 a stray one anywhere else fails the whole file and, because the mod loads the
-shader from Lua, would take the script down with it:
+shader from Lua, would take the script down with it. It also compiles each pass
+with `glslangValidator` when that is installed:
 
 ```sh
 python3 tools/check_omwfx.py shaders/*.omwfx
