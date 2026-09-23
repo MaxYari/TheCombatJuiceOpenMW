@@ -25,7 +25,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-GLSL_BLOCKS = {"fragment", "vertex", "compute"}
+GLSL_BLOCKS = {"fragment", "vertex", "compute", "shared"}
 
 BLOCK_KEYS = {
     "technique": {"passes", "version", "description", "author", "glsl_version", "flags", "hdr",
@@ -96,6 +96,10 @@ def compile_passes(path):
     uniforms += [f"uniform sampler2D {name};"
                  for name in re.findall(r"^sampler_2d\s+(\w+)\s*\{", text, re.M)]
 
+    # a shared block is prepended to every pass by the engine
+    shared = re.search(r"^shared\s*\{\n(.*?)\n\}\s*$", text, re.M | re.S)
+    shared = shared.group(1) + "\n" if shared else ""
+
     problems = []
     with tempfile.TemporaryDirectory() as tmp:
         for kind, name, body in re.findall(
@@ -103,7 +107,7 @@ def compile_passes(path):
                 text, re.M | re.S):
             stage = "frag" if kind == "fragment" else "vert"
             source = Path(tmp) / f"{name}.{stage}"
-            source.write_text(GLSL_PRELUDE + "\n".join(uniforms) + "\n" + body + "\n")
+            source.write_text(GLSL_PRELUDE + "\n".join(uniforms) + "\n" + shared + body + "\n")
             result = subprocess.run(["glslangValidator", "-S", stage, str(source)],
                                     capture_output=True, text=True)
             if result.returncode != 0:

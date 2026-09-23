@@ -172,39 +172,16 @@ local function frame(dt)
 end
 
 local victim = stub.newObject("npc", { id = "unarmoured" })
-local enginePos = { x = 0, y = 0, z = 5 }   -- the engine's random point, down by the feet
-local aimPos = { x = 10, y = 20, z = 90 }   -- where the crosshair actually is
+local enginePos = { x = 0, y = 0, z = 5 }
 
 stub.sentGlobalEvents = {}
-stub.interactionTarget = { hit = false }
 player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
 check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
-
--- Impact Effects bails out before its handlers when it cannot name a material,
--- which is what happens on a bare body part, so this has to light the hit.
-local lights = sentLights()
-check(#lights == 1, "an unarmoured victim is lit from the hit event, since the impact hook never fires")
-check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
-
--- With a ray through the crosshair available, that beats the engine's position.
-stub.realTime = stub.realTime + 1
-stub.sentGlobalEvents = {}
-stub.interactionTarget = { hit = true, hitObject = victim, hitPos = aimPos }
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-lights = sentLights()
-check(#lights == 1 and lights[1].pos == aimPos, "and it is placed where the crosshair was, not at the feet")
-
-stub.realTime = stub.realTime + 1
-stub.sentGlobalEvents = {}
-stub.interactionTarget = { hit = true, hitObject = stub.newObject("static"), hitPos = aimPos }
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-lights = sentLights()
-check(#lights == 1 and lights[1].pos == enginePos,
-      "a ray that hit something else falls back to the engine's position")
-stub.interactionTarget = { hit = false }
+check(#sentLights() == 0,
+      "and nothing else: the hit event has no usable position, so it lights nothing")
 
 -- Impact Effects hands over the material and the raycast's contact point.
 local hitPos = { x = 10, y = 20, z = 30 }
@@ -220,10 +197,14 @@ stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy
 lights = sentLights()
 check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold instead")
 
--- ...and the hit event that follows must not light it a second time.
+-- A bare body part reaches us only because of the one-line patch in Impact
+-- Effects (docs/impact-effects-unarmored.md); it reports "Unarmored".
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-check(#sentLights() == 0, "the hit event does not double up on an impact already handled")
+local bare = { material = "Unarmored", hitPos = hitPos }
+stub.impactActorHandlers[1](stub.newObject("npc"), bare)
+lights = sentLights()
+check(#lights == 1 and lights[1].r > lights[1].b, "an unarmoured hit gets the warm light")
+check(bare.noSound, "and is kept silent, since that material has no sound of its own")
 
 -- Striking the world goes through the object handler, which is the one that
 -- was missing: metal scenery sparked but never lit up.
@@ -277,21 +258,6 @@ var = { material = "Metal", hitPos = hitPos }
 stub.impactActorHandlers[1](stub.newObject("npc"), var)
 check(not var.noVfx and #sentVfx() == 0, "with variety off, Impact Effects plays its own mesh")
 setting("Effects", "SparkVariety", true)
-
-print("\n== without Impact Effects ==")
-do
-    stub.install(stub.player)
-    stub.packages["openmw.interfaces"].impactEffects = nil
-    stub.settingsPages, stub.settingsGroups = {}, {}
-    stub.hitHandlers = {}
-    local lone = loadScript("player.lua")
-    lone.engineHandlers.onUpdate(0.016)
-    stub.sentGlobalEvents = {}
-    lone.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true,
-                                         hitPos = enginePos })
-    check(#sentLights() == 1, "every hit is lit from the hit event instead")
-    stub.enableImpactEffects()
-end
 
 print("\n== the global script carries it out ==")
 stub.timeScale = 1

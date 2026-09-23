@@ -204,12 +204,15 @@ local function startFlash()
     flashShader:enable()
 end
 
--- Blown out in a couple of frames, held for a moment, then a long recovery -
--- an eye, or a camera, catching up with the light.
+-- The envelope is Sanguine Symphony's, read off its death imagespace: every
+-- curve in that record runs 0 at the start, peak a tenth of the way in, back to
+-- 0 at the end, interpolated linearly. Over the default half second that is a
+-- twentieth of a second to snap on and the rest to fade.
+local FLASH_PEAK_AT = 0.1
+
 local function flashEnvelope(t)
-    if t < 0.06 then return t / 0.06 end
-    if t < 0.30 then return 1 end
-    return (1 - (t - 0.30) / 0.70) ^ 1.8
+    if t < FLASH_PEAK_AT then return t / FLASH_PEAK_AT end
+    return (1 - t) / (1 - FLASH_PEAK_AT)
 end
 
 local function updateFlash()
@@ -340,40 +343,13 @@ local function hitLight(pos)
         effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
 end
 
-local lastImpactAt = -1000
-
--- Where the blow landed, best guess first.
---
--- The engine's own hit position is not a contact point at all: getHitContact
--- takes the victim's origin - their feet - and offsets it up by a *random* 20%
--- to 100% of their height, which is why a light placed there sometimes sits on
--- the floor. A ray through the middle of the screen is what the eye was
--- actually pointed at, so it goes first; MSS has already cast it this frame for
--- whoever else wanted it.
-local function bestHitPos(victim, enginePos)
-    if I.MSS and I.MSS.getInteractionTarget then
-        local ok, target = pcall(I.MSS.getInteractionTarget, 0.25)
-        if ok and target and target.hit and target.hitPos
-            and (victim == nil or target.hitObject == victim) then
-            return target.hitPos
-        end
-    end
-    return enginePos
-end
-
--- Sent by the actor we hit, from its own I.Combat hit handler.
+-- Sent by the actor we hit, from its own I.Combat hit handler. Only the shake
+-- comes from here: where the blow landed is Impact Effects' business, since the
+-- engine's own hit position is the victim's feet plus a random fraction of
+-- their height, not a contact point.
 local function onAttackLanded(data)
     if not data.successful then return end
     startShake(1)
-
-    -- Impact Effects is the better source of a hit position, but it only
-    -- reports a hit it can name a material for, and its armour lookup returns a
-    -- bare string for an empty slot which the caller then indexes - so an
-    -- unarmoured victim, or a bare leg on an armoured one, never reaches the
-    -- hook at all. Light those from here.
-    if now() - lastImpactAt > 0.25 then
-        hitLight(bestHitPos(data.victim, data.hitPos))
-    end
 end
 
 -- Somebody landed a hit on us.
@@ -395,14 +371,16 @@ local function onImpact(o, var)
     local pos = var.hitPos
     if not material or not pos then return end
 
-    -- Noted whether or not this impact ends up lighting anything, so the
-    -- fallback above knows this hit was already handled.
     local isActor = o ~= nil and types.Actor.objectIsInstance(o)
-    if isActor then lastImpactAt = now() end
 
     local mediumArmour = material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor
     local sparks = DEFS.sparkMaterials[material] ~= nil
     local variety = effectSettings.SparkVariety
+
+    -- Impact Effects reports a bare body part as "Unarmored" (see
+    -- docs/impact-effects-unarmored.md). It has no sound of its own and would
+    -- otherwise fall through to a dirt thud, so keep it quiet.
+    if material == "Unarmored" then var.noSound = true end
 
     if sparks or mediumArmour then
         sparkLight(pos)

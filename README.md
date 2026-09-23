@@ -41,25 +41,24 @@ overwriting each other.
 
 ### Kill flash
 
-An exposure blow-out, not a vignette: highlights bloom out and smear towards the
-middle of the screen, the darks fall away, the glare runs cold, and the whole
-frame lifts - a camera, or an eye, caught by a light it was not ready for. It
-snaps in over a couple of frames and takes most of a second to recover.
+Ported from the death imagespace in the Skyrim mod
+[Sanguine Symphony](https://www.nexusmods.com/skyrimspecialedition/mods/148388),
+read out of its plugin: the image smears out from the middle of the screen,
+contrast snaps up, highlights bloom, the colour drains, and a little red goes
+back in. Its timing is used as it stands - half a second, peaking a tenth of the
+way in and falling away over the rest, which is a twentieth of a second to snap
+on and about half a second to let go.
 
-Nothing gets darker. The tone curve is a straight multiply, so every pixel comes
-out at least as bright as it went in, and the top of the range clips to white:
-on a dim interior frame that lifts the mean by half and blows out a third of the
-image. There is a **shadow crush** knob for the look a real overexposed frame
-has, where the darks fall away as the highlights blow - it is off by default,
-because any amount of it darkens the darkest part of the screen, and in a
-Morrowind interior that is most of the screen.
+The numbers that mod uses are `contrast 1.3`, `radial blur 0.15`, `saturation 0`
+and `tint red at 0.059`, and they are the starting point here. Two of them are
+deliberately not literal: the contrast turns about a low pivot rather than mid
+grey, because in a Morrowind interior mid grey puts most of the screen on the
+darkening side of it, and the desaturation defaults to a third of the way rather
+than fully monochrome. Both are settings.
 
-It runs as two passes: a quarter resolution bright pass, which thresholds the
-image *after* exposure so a dim room still blooms once it has been blown out,
-then a composite that spreads that buffer back over the image. Everything about it - glare amount,
-threshold, radius, streak length, exposure, shadow crush and tint - is a uniform
-you can tune live from the post processing HUD. It takes the same trigger
-setting as the slow motion, so it can be limited to the end of a fight.
+Everything about it - zoom blur, contrast, pivot, exposure, bloom and its
+threshold and radius, desaturation, tint and tint amount - is a live uniform in
+the post processing HUD, so it can be dialled in while the game runs.
 
 ### Sparks
 
@@ -98,17 +97,19 @@ and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
 scenery gets the spark light but never the warm one.
 
-Placing them takes some care. The engine's own hit position is not a contact
-point: `getHitContact` takes the victim's origin - their feet - and raises it by
-a *random* 20% to 100% of their height, so a light placed there lands on the
-floor often enough to notice. The contact point Impact Effects raycast is used
-when it is available, then a ray through the middle of the screen, and only then
-the engine's guess.
+Every one of them is placed at the contact point Impact Effects raycast, and
+nowhere else. The engine's own hit position is no use for this: `getHitContact`
+takes the victim's origin - their feet - and raises it by a *random* 20% to 100%
+of their height, so a light placed there lands on the floor as often as on the
+wound.
 
-Impact Effects does not always report, either: it bails out before its handlers
-whenever it cannot name a material, which includes any bare body part, so an
-unarmoured enemy never reaches the hook at all. Those hits are lit from the hit
-event instead.
+That means Impact Effects has to report every hit, and as shipped it does not:
+it throws the raycast away before calling any handler whenever it cannot name a
+material, which includes any bare body part. **A one-line change fixes it**, and
+[docs/impact-effects-unarmored.md](docs/impact-effects-unarmored.md) is a memo
+to send its author. It is applied to the local install, with the original kept
+alongside - re-apply it after updating that mod, or hits on unarmoured enemies
+stop lighting up.
 
 NIF lights are not loaded by OpenMW, so these are real light records spawned by
 the mod, from a pool of three objects per colour that are parked disabled and

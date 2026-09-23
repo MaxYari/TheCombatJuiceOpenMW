@@ -1,72 +1,110 @@
 uniform_float uStrength {
     default = 0.0;
     min = 0.0;
-    max = 2.0;
     step = 0.01;
-    display_name = "Blow-out Strength";
+    display_name = "Flash Strength";
     static = false;
 }
 
-uniform_float uGlow {
-    default = 0.8;
+uniform_float uRadial {
+    default = 0.1;
     min = 0.0;
-    max = 6.0;
+    max = 0.5;
+    step = 0.005;
+    display_name = "Radial Blur";
+    description = "How far the image is smeared out from the middle of the screen. Sanguine Symphony's death imagespace uses 0.15 for this.";
+}
+
+uniform_float uContrast {
+    default = 1.35;
+    min = 1.0;
+    step = 0.01;
+    display_name = "Contrast";
+    description = "Sanguine Symphony's death imagespace uses 1.3.";
+}
+
+uniform_float uPivot {
+    default = 0.22;
+    min = 0.0;
+    max = 1.0;
+    step = 0.01;
+    display_name = "Contrast Pivot";
+    description = "The brightness the contrast turns about. Anything below it darkens, so it sits low: in a Morrowind interior mid grey would put most of the screen on the wrong side of it.";
+}
+
+uniform_float uExposure {
+    default = 0.35;
+    min = 0.0;
+    step = 0.01;
+    display_name = "Exposure Lift";
+    description = "A straight multiply over the whole image.";
+}
+
+uniform_float uBloom {
+    default = 0.9;
+    min = 0.0;
     step = 0.05;
-    display_name = "Glare";
+    display_name = "Bloom";
     description = "How much of the blown out highlights is smeared back over the image.";
 }
 
 uniform_float uThreshold {
-    default = 0.6;
+    default = 0.55;
     min = 0.0;
     max = 1.0;
     step = 0.01;
-    display_name = "Glare Threshold";
-    description = "Brightness a pixel needs before it blooms, measured after the exposure lift - so a dim room still blooms once it is blown out.";
+    display_name = "Bloom Threshold";
+    description = "Brightness a pixel needs before it blooms, measured after the exposure lift.";
 }
 
-uniform_float uGlowRadius {
-    default = 0.055;
+uniform_float uBloomRadius {
+    default = 0.06;
     min = 0.0;
-    max = 0.25;
+    max = 0.3;
     step = 0.005;
-    display_name = "Glare Radius";
+    display_name = "Bloom Radius";
     description = "How far the bloom spreads, as a fraction of screen height.";
 }
 
-uniform_float uRadial {
-    default = 0.07;
+uniform_float uDesaturate {
+    default = 0.3;
     min = 0.0;
-    max = 0.5;
-    step = 0.005;
-    display_name = "Radial Streaks";
-    description = "How far the glare is dragged towards the middle of the screen.";
-}
-
-uniform_float uExposure {
-    default = 1.0;
-    min = 0.0;
-    max = 6.0;
-    step = 0.05;
-    display_name = "Exposure Lift";
-    description = "The blow-out itself: every pixel is multiplied by 1 + this. With the shadow crush at 0 nothing can come out darker than it went in.";
-}
-
-uniform_float uContrast {
-    default = 0.0;
-    min = 0.0;
-    max = 2.0;
+    max = 1.0;
     step = 0.01;
-    display_name = "Shadow Crush";
-    description = "Optional, off by default. Deepens the shadows before the exposure lift, the way the frame of an overexposed camera looks. Any value above 0 makes the darkest part of the image darker, which in a dim interior is most of the screen.";
+    display_name = "Desaturation";
+    description = "Sanguine Symphony's death imagespace goes all the way to 1, fully monochrome. 0.3 keeps the scene's own colour while taking the edge off it.";
 }
 
 uniform_vec3 uTint {
-    default = vec3(0.72, 0.94, 1.18);
+    default = vec3(1.0, 0.22, 0.18);
     min = vec3(0.0, 0.0, 0.0);
-    max = vec3(2.0, 2.0, 2.0);
-    display_name = "Glare Tint";
-    description = "Colour of the glare. Cold by default, the way a bright flash reads on camera.";
+    max = vec3(1.0, 1.0, 1.0);
+    display_name = "Tint";
+    description = "Colour mixed in at the peak. Red, as the Skyrim mod's 'subtle red' death flash does it.";
+}
+
+uniform_float uTintAmount {
+    default = 0.06;
+    min = 0.0;
+    max = 1.0;
+    step = 0.01;
+    display_name = "Tint Amount";
+    description = "Sanguine Symphony uses 0.059.";
+}
+
+shared {
+    const vec3 CC_LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+    // Contrast about a low pivot, then a straight lift. Everything the flash
+    // does to tone happens here, so the bright pass and the composite agree on
+    // what counts as blown out.
+    vec3 ccTone(vec3 color, float s)
+    {
+        float contrast = mix(1.0, uContrast, s);
+        color = (color - vec3(uPivot)) * contrast + vec3(uPivot);
+        color *= 1.0 + uExposure * s;
+        return max(color, vec3(0.0));
+    }
 }
 
 render_target RT_CCGlare {
@@ -97,23 +135,19 @@ fragment cc_bright(target=RT_CCGlare) {
         c += omw_GetLastShader(omw_TexCoord + vec2(o.x, o.y)).rgb;
         c *= 0.25;
 
-        // Expose first, then look for what is blown: a dim room has nothing
-        // over the threshold until the flash has lifted it.
-        float s = min(uStrength, 2.0);
-        vec3 exposed = pow(max(c, vec3(0.0)), vec3(1.0 + uContrast * s)) * (1.0 + uExposure * s);
-
-        float luma = dot(exposed, vec3(0.2126, 0.7152, 0.0722));
+        vec3 toned = ccTone(c, uStrength);
+        float luma = dot(toned, CC_LUMA);
         float over = clamp((luma - uThreshold) / max(1.0 - uThreshold, 0.001), 0.0, 2.0);
 
-        omw_FragColor = vec4(exposed * over, 1.0);
+        omw_FragColor = vec4(toned * over, 1.0);
     }
 }
 
 fragment cc_flash(rt1=RT_CCGlare) {
     omw_In vec2 omw_TexCoord;
 
+    const int ZOOM_TAPS = 6;
     const int GLARE_TAPS = 12;
-    const int STREAK_TAPS = 6;
 
     void main()
     {
@@ -125,44 +159,47 @@ fragment cc_flash(rt1=RT_CCGlare) {
             return;
         }
 
-        float s = min(uStrength, 2.0);
-        vec2 aspect = vec2(omw.resolution.x / omw.resolution.y, 1.0);
+        float s = uStrength;
+        vec2 centre = vec2(0.5);
 
-        // Round bloom: a spiral of taps over the quarter res bright buffer,
-        // which is already soft from being downsampled with linear filtering.
-        vec3 glare = vec3(0.0);
+        // Zoom blur out of the middle of the screen. This is the part that reads
+        // as impact rather than as a brightness change, and it is what Skyrim's
+        // imagespace does with its radial blur strength.
+        vec3 blurred = vec3(0.0);
         float total = 0.0;
+        for (int i = 0; i < ZOOM_TAPS; ++i)
+        {
+            float f = float(i) / float(ZOOM_TAPS - 1);
+            float weight = 1.0 - 0.55 * f;
+            blurred += omw_GetLastShader(mix(omw_TexCoord, centre, f * uRadial * s)).rgb * weight;
+            total += weight;
+        }
+        blurred /= max(total, 0.0001);
+
+        vec3 color = ccTone(blurred, s);
+
+        // Round bloom over the quarter res bright buffer, already soft from
+        // being downsampled with linear filtering.
+        vec2 aspect = vec2(omw.resolution.x / omw.resolution.y, 1.0);
+        vec3 glare = vec3(0.0);
+        total = 0.0;
         for (int i = 0; i < GLARE_TAPS; ++i)
         {
             float fi = float(i);
             float angle = fi * 2.39996323;
-            float radius = sqrt((fi + 0.5) / float(GLARE_TAPS)) * uGlowRadius;
-            float weight = 1.0 - 0.55 * radius / max(uGlowRadius, 0.0001);
+            float radius = sqrt((fi + 0.5) / float(GLARE_TAPS)) * uBloomRadius;
+            float weight = 1.0 - 0.55 * radius / max(uBloomRadius, 0.0001);
             vec2 offset = vec2(cos(angle), sin(angle)) * radius / aspect;
             glare += omw_Texture2D(RT_CCGlare, omw_TexCoord + offset).rgb * weight;
             total += weight;
         }
-        glare /= max(total, 0.0001);
+        color += glare / max(total, 0.0001) * uBloom * s;
 
-        // Streaks dragged towards the middle, the smear of a camera whipping
-        // round to a light it was not exposed for.
-        vec3 streak = vec3(0.0);
-        float streakTotal = 0.0;
-        vec2 toCentre = vec2(0.5) - omw_TexCoord;
-        for (int i = 1; i <= STREAK_TAPS; ++i)
-        {
-            float f = float(i) / float(STREAK_TAPS);
-            float weight = 1.0 - 0.7 * f;
-            streak += omw_Texture2D(RT_CCGlare, omw_TexCoord + toCentre * f * uRadial).rgb * weight;
-            streakTotal += weight;
-        }
-        streak /= max(streakTotal, 0.0001);
-
-        // Overexposure. The crush goes first so deep shadows keep falling away,
-        // then the whole image is multiplied until its top half clips white, and
-        // the glare is smeared over that.
-        vec3 color = pow(max(scene.rgb, vec3(0.0)), vec3(1.0 + uContrast * s)) * (1.0 + uExposure * s);
-        color += (glare + streak) * uTint * uGlow * s;
+        // Drain some colour and put a little of the tint back, the way the
+        // Skyrim mod's death flash goes monochrome with a touch of red.
+        float luma = dot(color, CC_LUMA);
+        color = mix(color, vec3(luma), uDesaturate * s);
+        color = mix(color, uTint * max(luma, 0.0), uTintAmount * s);
 
         omw_FragColor = vec4(color, scene.a);
     }
@@ -170,8 +207,8 @@ fragment cc_flash(rt1=RT_CCGlare) {
 
 technique {
     passes = cc_bright, cc_flash;
-    description = "Cinematic Combat: an exposure blow-out on a kill.";
-    version = "1.1";
+    description = "Cinematic Combat: a kill flash after Sanguine Symphony's death imagespace - zoom blur, contrast, bloom, a drain of colour and a touch of red.";
+    version = "1.2";
     author = "Max Yari";
     dynamic = true;
 }
