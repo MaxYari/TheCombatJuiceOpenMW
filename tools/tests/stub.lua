@@ -175,6 +175,7 @@ packages["openmw.interfaces"] = {
         version = 1,
         addDamageListener = function(fn) table.insert(M.damageListeners, fn) end,
         getCombatTargets = function() return M.mssTargets end,
+        getInteractionTarget = function() return M.interactionTarget or { hit = false } end,
     },
     impactEffects = nil, -- set by M.enableImpactEffects()
 }

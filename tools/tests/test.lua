@@ -171,15 +171,40 @@ local function frame(dt)
     player.engineHandlers.onFrame()
 end
 
+local victim = stub.newObject("npc", { id = "unarmoured" })
+local enginePos = { x = 0, y = 0, z = 5 }   -- the engine's random point, down by the feet
+local aimPos = { x = 10, y = 20, z = 90 }   -- where the crosshair actually is
+
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true,
-                                       hitPos = { x = 1, y = 2, z = 3 } })
+stub.interactionTarget = { hit = false }
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
 check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
-check(#sentLights() == 0,
-      "but does not light it: Impact Effects knows the contact point, the hit event does not")
+
+-- Impact Effects bails out before its handlers when it cannot name a material,
+-- which is what happens on a bare body part, so this has to light the hit.
+local lights = sentLights()
+check(#lights == 1, "an unarmoured victim is lit from the hit event, since the impact hook never fires")
+check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
+
+-- With a ray through the crosshair available, that beats the engine's position.
+stub.realTime = stub.realTime + 1
+stub.sentGlobalEvents = {}
+stub.interactionTarget = { hit = true, hitObject = victim, hitPos = aimPos }
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+lights = sentLights()
+check(#lights == 1 and lights[1].pos == aimPos, "and it is placed where the crosshair was, not at the feet")
+
+stub.realTime = stub.realTime + 1
+stub.sentGlobalEvents = {}
+stub.interactionTarget = { hit = true, hitObject = stub.newObject("static"), hitPos = aimPos }
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+lights = sentLights()
+check(#lights == 1 and lights[1].pos == enginePos,
+      "a ray that hit something else falls back to the engine's position")
+stub.interactionTarget = { hit = false }
 
 -- Impact Effects hands over the material and the raycast's contact point.
 local hitPos = { x = 10, y = 20, z = 30 }
@@ -194,6 +219,11 @@ stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
 lights = sentLights()
 check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold instead")
+
+-- ...and the hit event that follows must not light it a second time.
+stub.sentGlobalEvents = {}
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+check(#sentLights() == 0, "the hit event does not double up on an impact already handled")
 
 -- Striking the world goes through the object handler, which is the one that
 -- was missing: metal scenery sparked but never lit up.
@@ -258,8 +288,8 @@ do
     lone.engineHandlers.onUpdate(0.016)
     stub.sentGlobalEvents = {}
     lone.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = true,
-                                         hitPos = hitPos })
-    check(#sentLights() == 1, "the hit event lights the blow, since nothing better is available")
+                                         hitPos = enginePos })
+    check(#sentLights() == 1, "every hit is lit from the hit event instead")
     stub.enableImpactEffects()
 end
 

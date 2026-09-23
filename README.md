@@ -46,10 +46,13 @@ middle of the screen, the darks fall away, the glare runs cold, and the whole
 frame lifts - a camera, or an eye, caught by a light it was not ready for. It
 snaps in over a couple of frames and takes most of a second to recover.
 
-The tone curve crushes the shadows and then multiplies the whole image by two
-and a half, so everything above about a fifth brightness lifts and the top half
-of the range clips to white. Measured against the reference clip: mean up a
-fifth, and 6% of the frame blown before the glare pass adds its own.
+Nothing gets darker. The tone curve is a straight multiply, so every pixel comes
+out at least as bright as it went in, and the top of the range clips to white:
+on a dim interior frame that lifts the mean by half and blows out a third of the
+image. There is a **shadow crush** knob for the look a real overexposed frame
+has, where the darks fall away as the highlights blow - it is off by default,
+because any amount of it darkens the darkest part of the screen, and in a
+Morrowind interior that is most of the screen.
 
 It runs as two passes: a quarter resolution bright pass, which thresholds the
 image *after* exposure so a dim room still blooms once it has been blown out,
@@ -95,10 +98,17 @@ and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
 scenery gets the spark light but never the warm one.
 
-Both are placed at the contact point Impact Effects raycast, not at the hit
-position the engine reports with the hit itself, which for a melee blow can sit
-at the victim's origin - at their feet. Without Impact Effects installed there
-is nothing better to go on and the engine's position is used.
+Placing them takes some care. The engine's own hit position is not a contact
+point: `getHitContact` takes the victim's origin - their feet - and raises it by
+a *random* 20% to 100% of their height, so a light placed there lands on the
+floor often enough to notice. The contact point Impact Effects raycast is used
+when it is available, then a ray through the middle of the screen, and only then
+the engine's guess.
+
+Impact Effects does not always report, either: it bails out before its handlers
+whenever it cannot name a material, which includes any bare body part, so an
+unarmoured enemy never reaches the hook at all. Those hits are lit from the hit
+event instead.
 
 NIF lights are not loaded by OpenMW, so these are real light records spawned by
 the mod, from a pool of three objects per colour that are parked disabled and

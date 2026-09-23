@@ -27,7 +27,7 @@ Fires when a hit lands, decaying over a third of a second. Hits you take don't s
 
 An exposure blow-out, not a vignette: highlights bloom out and smear towards the middle of the screen, the darks fall away, the glare runs cold, and the whole frame lifts - a camera, or an eye, caught by a light it was not ready for. It snaps in over a couple of frames and takes most of a second to recover.
 
-The tone curve crushes the shadows and then multiplies the whole image by two and a half, so everything above about a fifth brightness lifts and the top half of the range clips to white. Measured against the reference clip: mean up a fifth, and 6% of the frame blown before the glare pass adds its own.
+Nothing gets darker. The tone curve is a straight multiply, so every pixel comes out at least as bright as it went in, and the top of the range clips to white: on a dim interior frame that lifts the mean by half and blows out a third of the image. There is a [b]shadow crush[/b] knob for the look a real overexposed frame has, where the darks fall away as the highlights blow - it is off by default, because any amount of it darkens the darkest part of the screen, and in a Morrowind interior that is most of the screen.
 
 It runs as two passes: a quarter resolution bright pass, which thresholds the image [i]after[/i] exposure so a dim room still blooms once it has been blown out, then a composite that spreads that buffer back over the image. Everything about it - glare amount, threshold, radius, streak length, exposure, shadow crush and tint - is a uniform you can tune live from the post processing HUD. It takes the same trigger setting as the slow motion, so it can be limited to the end of a fight.
 
@@ -45,7 +45,9 @@ These are mesh replacers for [font=Courier New]meshes/e/impact/metalSpark.nif[/f
 
 [b]Impact lights:[/b] sparks throw a very short lived light where they appear (cold blue, ~0.1s), and hits on an actor that spark off nothing - flesh, cloth, light armour - get a weaker, warmer one that is meant to go unnoticed. Struck scenery gets the spark light but never the warm one.
 
-Both are placed at the contact point Impact Effects raycast, not at the hit position the engine reports with the hit itself, which for a melee blow can sit at the victim's origin - at their feet. Without Impact Effects installed there is nothing better to go on and the engine's position is used.
+Placing them takes some care. The engine's own hit position is not a contact point: [font=Courier New]getHitContact[/font] takes the victim's origin - their feet - and raises it by a [i]random[/i] 20% to 100% of their height, so a light placed there lands on the floor often enough to notice. The contact point Impact Effects raycast is used when it is available, then a ray through the middle of the screen, and only then the engine's guess.
+
+Impact Effects does not always report, either: it bails out before its handlers whenever it cannot name a material, which includes any bare body part, so an unarmoured enemy never reaches the hook at all. Those hits are lit from the hit event instead.
 
 NIF lights are not loaded by OpenMW, so these are real light records spawned by the mod, from a pool of three objects per colour that are parked disabled and reused rather than created and destroyed per hit.
 

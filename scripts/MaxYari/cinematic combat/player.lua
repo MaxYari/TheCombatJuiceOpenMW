@@ -177,10 +177,16 @@ end
 -- postprocessing.load throws if the shader does not compile or post processing
 -- is off, and an error out here would take the whole script down with it. The
 -- flash is the only thing that should be lost.
+--
+-- The shader is named cc_blowout rather than cc_killflash because OpenMW keeps
+-- every uniform a player has touched in shaders.yaml, keyed by technique name,
+-- and those saved values override the defaults shipped in the file
+-- (technique.cpp: the parser looks each one up in ShaderManager). A new name
+-- means the reworked effect starts from its own defaults.
 local flashShader
 do
     local ok, wrapper = pcall(shaderUtils.ShaderWrapper.new, shaderUtils.ShaderWrapper,
-        "cc_killflash", { uStrength = 0 })
+        "cc_blowout", { uStrength = 0 })
     if ok then
         flashShader = wrapper
     else
@@ -334,15 +340,40 @@ local function hitLight(pos)
         effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
 end
 
+local lastImpactAt = -1000
+
+-- Where the blow landed, best guess first.
+--
+-- The engine's own hit position is not a contact point at all: getHitContact
+-- takes the victim's origin - their feet - and offsets it up by a *random* 20%
+-- to 100% of their height, which is why a light placed there sometimes sits on
+-- the floor. A ray through the middle of the screen is what the eye was
+-- actually pointed at, so it goes first; MSS has already cast it this frame for
+-- whoever else wanted it.
+local function bestHitPos(victim, enginePos)
+    if I.MSS and I.MSS.getInteractionTarget then
+        local ok, target = pcall(I.MSS.getInteractionTarget, 0.25)
+        if ok and target and target.hit and target.hitPos
+            and (victim == nil or target.hitObject == victim) then
+            return target.hitPos
+        end
+    end
+    return enginePos
+end
+
 -- Sent by the actor we hit, from its own I.Combat hit handler.
 local function onAttackLanded(data)
     if not data.successful then return end
     startShake(1)
-    -- Without Impact Effects nothing else knows where the hit landed, so the
-    -- engine's own hit position has to do. With it, the light is spawned from
-    -- the impact hook instead, off a raycast that actually hit something -
-    -- this one can sit at the victim's feet.
-    if not impactHooksDone then hitLight(data.hitPos) end
+
+    -- Impact Effects is the better source of a hit position, but it only
+    -- reports a hit it can name a material for, and its armour lookup returns a
+    -- bare string for an empty slot which the caller then indexes - so an
+    -- unarmoured victim, or a bare leg on an armoured one, never reaches the
+    -- hook at all. Light those from here.
+    if now() - lastImpactAt > 0.25 then
+        hitLight(bestHitPos(data.victim, data.hitPos))
+    end
 end
 
 -- Somebody landed a hit on us.
@@ -364,13 +395,18 @@ local function onImpact(o, var)
     local pos = var.hitPos
     if not material or not pos then return end
 
+    -- Noted whether or not this impact ends up lighting anything, so the
+    -- fallback above knows this hit was already handled.
+    local isActor = o ~= nil and types.Actor.objectIsInstance(o)
+    if isActor then lastImpactAt = now() end
+
     local mediumArmour = material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor
     local sparks = DEFS.sparkMaterials[material] ~= nil
     local variety = effectSettings.SparkVariety
 
     if sparks or mediumArmour then
         sparkLight(pos)
-    elseif o and types.Actor.objectIsInstance(o) then
+    elseif isActor then
         -- Flesh, cloth, light armour: the weaker, warmer flash. Struck scenery
         -- gets nothing, it is only enemies that should light up.
         hitLight(pos)

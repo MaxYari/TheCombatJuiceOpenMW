@@ -44,21 +44,21 @@ uniform_float uRadial {
 }
 
 uniform_float uExposure {
-    default = 1.5;
+    default = 1.0;
     min = 0.0;
     max = 6.0;
     step = 0.05;
     display_name = "Exposure Lift";
-    description = "The blow-out itself: the image is multiplied by 1 + this, so everything above roughly a fifth brightness lifts and the top half of the range clips to white.";
+    description = "The blow-out itself: every pixel is multiplied by 1 + this. With the shadow crush at 0 nothing can come out darker than it went in.";
 }
 
 uniform_float uContrast {
-    default = 0.45;
+    default = 0.0;
     min = 0.0;
     max = 2.0;
     step = 0.01;
     display_name = "Shadow Crush";
-    description = "Applied before the exposure lift, so deep shadows stay dark while everything else blows out. A tone curve over the whole image, not a vignette.";
+    description = "Optional, off by default. Deepens the shadows before the exposure lift, the way the frame of an overexposed camera looks. Any value above 0 makes the darkest part of the image darker, which in a dim interior is most of the screen.";
 }
 
 uniform_vec3 uTint {
