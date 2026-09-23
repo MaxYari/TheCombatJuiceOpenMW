@@ -229,14 +229,18 @@ end
 
 -- Kills ---------------------------------------------------------------------
 
+-- One duration knob per slow motion; the shape of the dip is fixed. The split is
+-- Dynamic Reticle's, measured rather than copied: its 0.05/0.1/0.3 were ticked
+-- with simulation dt, which is the very thing being slowed, so at its 0.2 floor
+-- they came to 0.07/0.45/1.00 in real seconds. These are those, as fractions.
+local SLOWDOWN_SHAPE = { inTime = 0.04, hold = 0.30, outTime = 0.66 }
+
 local function requestSlowdown(scale, duration)
-    -- One duration knob per slow motion; the shape of the dip is fixed at the
-    -- proportions the old in/hold/out settings defaulted to.
     core.sendGlobalEvent(DEFS.e.Slowdown, {
         scale = scale,
-        inTime = duration * 0.11,
-        hold = duration * 0.22,
-        outTime = duration * 0.67,
+        inTime = duration * SLOWDOWN_SHAPE.inTime,
+        hold = duration * SLOWDOWN_SHAPE.hold,
+        outTime = duration * SLOWDOWN_SHAPE.outTime,
     })
 end
 

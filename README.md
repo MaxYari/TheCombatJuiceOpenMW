@@ -18,7 +18,13 @@ Two of them, and every kill is checked against both:
 * a **short** dip, on every kill by default;
 * a **long** one, on the last enemy of a long fight by default.
 
-Each has its own trigger, chance, time scale and duration. A trigger is the
+Each has its own trigger, chance, time scale and duration. The long one is
+Dynamic Reticle's kill slowdown: same 0.2 floor, and **1.5 seconds**, which is
+what that effect really took. Its settings read 0.05 / 0.1 / 0.3, but it counted
+them with simulation time, and simulation time is the thing being slowed - at a
+0.2 floor a "0.1 second" hold is half a second of real time. Measured against
+its own loop at 60fps the whole thing came to 1.52s, split 4% easing in, 30%
+held, 66% easing out, which is the shape both slow motions use here. A trigger is the
 loosest case it accepts - *every kill*, *last enemy of a fight*, *last enemy of a
 long fight*, or *never* - and a kill qualifies if it is that case or a stricter
 one. Since the kill that ends a long fight is also an ordinary kill, both can

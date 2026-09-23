@@ -95,7 +95,7 @@ a.dead = true
 player.eventHandlers.CC_ActorKilled({ victim = a })
 local s = sentSlowdown()
 check(s ~= nil, "a kill mid fight still slows time")
-check(s and math.abs((s.inTime + s.hold + s.outTime) - 0.22) < 1e-6,
+check(s and math.abs((s.inTime + s.hold + s.outTime) - 0.45) < 1e-6,
       "with the short slow motion's duration")
 
 print("\n== the last enemy of a short fight ==")
@@ -104,7 +104,7 @@ stub.realTime = stub.realTime + 3
 b.dead = true
 player.eventHandlers.CC_ActorKilled({ victim = b })
 s = sentSlowdown()
-check(s ~= nil and math.abs((s.inTime + s.hold + s.outTime) - 0.22) < 1e-6,
+check(s ~= nil and math.abs((s.inTime + s.hold + s.outTime) - 0.45) < 1e-6,
       "gets the short one too: the long one is set to long fights only")
 
 print("\n== the last enemy of a long fight ==")
@@ -116,7 +116,7 @@ c.dead = true
 player.eventHandlers.CC_ActorKilled({ victim = c })
 s = sentSlowdown()
 check(s ~= nil, "slows time")
-check(s and math.abs((s.inTime + s.hold + s.outTime) - 0.45) < 1e-6,
+check(s and math.abs((s.inTime + s.hold + s.outTime) - 1.5) < 1e-6,
       "and the long slow motion wins, since both qualified")
 
 print("\n== triggers and chance ==")

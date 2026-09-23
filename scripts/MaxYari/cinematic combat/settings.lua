@@ -59,7 +59,7 @@ I.Settings.registerGroup {
             "Chance it plays on a kill that qualifies. 1 is always."),
         number('SmallSlowdownScale', 'Short Slow Motion Time Scale', 0.45, 0.01, 1,
             "How slow the world gets at the deepest point."),
-        number('SmallSlowdownDuration', 'Short Slow Motion Duration', 0.22, 0.05, nil,
+        number('SmallSlowdownDuration', 'Short Slow Motion Duration', 0.45, 0.05, nil,
             "Seconds of real time for the whole dip, easing in and out included."),
 
         trigger('BigSlowdownTrigger', 'Long Slow Motion On', DEFS.TRIGGER.LongEncounterEnd,
@@ -68,8 +68,10 @@ I.Settings.registerGroup {
             "Chance it plays on a kill that qualifies. 1 is always."),
         number('BigSlowdownScale', 'Long Slow Motion Time Scale', 0.2, 0.01, 1,
             "How slow the world gets at the deepest point."),
-        number('BigSlowdownDuration', 'Long Slow Motion Duration', 0.45, 0.05, nil,
-            "Seconds of real time for the whole thing, easing in and out included."),
+        number('BigSlowdownDuration', 'Long Slow Motion Duration', 1.5, 0.05, nil,
+            "Seconds of real time for the whole thing, easing in and out included. 1.5 is what " ..
+            "Dynamic Reticle's kill slowdown actually came to: its settings read 0.05/0.1/0.3, " ..
+            "but it counted them in simulation time, which stretches while the world is slowed."),
 
         number('LongEncounterSeconds', 'A Long Fight Is This Many Seconds', 20, 0, nil,
             "A fight counts as long once this much time has passed since it started."),
