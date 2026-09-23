@@ -103,6 +103,13 @@ and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
 scenery gets the spark light but never the warm one.
 
+The warm one waits for the hit to be confirmed. Impact Effects casts its ray on
+the swing's `min hit` key, before the engine has ruled on the attack, so it
+reports a material whether the blow lands or misses; the light on flesh holds
+until the victim says the hit was real, an update or two later. Sparks are left
+alone - a blade skating off a pauldron rings either way, and the cold light
+belongs with the sparks that are already flying.
+
 Every one of them is placed at the contact point Impact Effects raycast, and
 nowhere else. The engine's own hit position is no use for this: `getHitContact`
 takes the victim's origin - their feet - and raises it by a *random* 20% to 100%

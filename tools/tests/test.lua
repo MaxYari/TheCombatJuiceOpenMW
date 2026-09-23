@@ -183,14 +183,29 @@ check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
 check(#sentLights() == 0,
       "and nothing else: the hit event has no usable position, so it lights nothing")
 
--- Impact Effects hands over the material and the raycast's contact point.
+-- Impact Effects hands over the material and the raycast's contact point, but it
+-- casts that ray on the swing, before the engine has ruled on it.
 local hitPos = { x = 10, y = 20, z = 30 }
 stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Dmg", hitPos = hitPos })
+check(#sentLights() == 0, "a swing that reaches flesh does not light it yet")
+
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 local lights = sentLights()
 check(#lights == 1 and lights[1].r > lights[1].b,
-      "flesh gets the warm light, at the point Impact Effects raycast")
-check(lights[1] and lights[1].pos == hitPos, "so it lands where the blow did")
+      "the warm light follows once the victim confirms the hit")
+check(lights[1] and lights[1].pos == hitPos, "and lands where Impact Effects raycast, not where the engine guessed")
+
+-- A swing that misses reports a material all the same, and must light nothing.
+stub.sentGlobalEvents = {}
+stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Dmg", hitPos = hitPos })
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
+check(#sentLights() == 0, "a miss on flesh lights nothing")
+
+-- ...and a miss must not leave the light waiting for the next hit either.
+stub.sentGlobalEvents = {}
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+check(#sentLights() == 0, "and does not carry over to the next successful hit")
 
 stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
@@ -202,9 +217,15 @@ check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it co
 stub.sentGlobalEvents = {}
 local bare = { material = "Unarmored", hitPos = hitPos }
 stub.impactActorHandlers[1](stub.newObject("npc"), bare)
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 lights = sentLights()
 check(#lights == 1 and lights[1].r > lights[1].b, "an unarmoured hit gets the warm light")
 check(bare.noSound, "and is kept silent, since that material has no sound of its own")
+
+stub.sentGlobalEvents = {}
+stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Unarmored", hitPos = hitPos })
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
+check(#sentLights() == 0, "a miss on an unarmoured enemy lights nothing")
 
 -- Striking the world goes through the object handler, which is the one that
 -- was missing: metal scenery sparked but never lit up.

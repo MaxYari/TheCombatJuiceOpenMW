@@ -45,6 +45,8 @@ These are mesh replacers for [font=Courier New]meshes/e/impact/metalSpark.nif[/f
 
 [b]Impact lights:[/b] sparks throw a very short lived light where they appear (cold blue, ~0.1s), and hits on an actor that spark off nothing - flesh, cloth, light armour - get a weaker, warmer one that is meant to go unnoticed. Struck scenery gets the spark light but never the warm one.
 
+The warm one waits for the hit to be confirmed. Impact Effects casts its ray on the swing's [font=Courier New]min hit[/font] key, before the engine has ruled on the attack, so it reports a material whether the blow lands or misses; the light on flesh holds until the victim says the hit was real, an update or two later. Sparks are left alone - a blade skating off a pauldron rings either way, and the cold light belongs with the sparks that are already flying.
+
 Every one of them is placed at the contact point Impact Effects raycast, and nowhere else. The engine's own hit position is no use for this: [font=Courier New]getHitContact[/font] takes the victim's origin - their feet - and raises it by a [i]random[/i] 20% to 100% of their height, so a light placed there lands on the floor as often as on the wound.
 
 That means Impact Effects has to report every hit, and as shipped it does not: it throws the raycast away before calling any handler whenever it cannot name a material, which includes any bare body part. [b]A one-line change fixes it[/b], and [url=https://github.com/MaxYari/CinematicCombatOpenMW/blob/main/docs/impact-effects-unarmored.md]docs/impact-effects-unarmored.md[/url] is a memo to send its author. It is applied to the local install, with the original kept alongside - re-apply it after updating that mod, or hits on unarmoured enemies stop lighting up.

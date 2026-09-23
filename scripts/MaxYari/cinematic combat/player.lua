@@ -347,13 +347,27 @@ local function hitLight(pos)
         effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
 end
 
--- Sent by the actor we hit, from its own I.Combat hit handler. Only the shake
--- comes from here: where the blow landed is Impact Effects' business, since the
--- engine's own hit position is the victim's feet plus a random fraction of
--- their height, not a contact point.
+-- Impact Effects casts its ray on the swing's "min hit" key, before the engine
+-- has decided anything, so it reports a material for a swing that misses just
+-- as it does for one that lands. Sparks are fine with that - a blade skating
+-- off a pauldron rings either way - but a light on flesh should only appear
+-- when the blow actually connected. So the warm light waits here for the victim
+-- to say whether it did, which is an update or two behind the ray.
+local pendingHitLight = nil
+local PENDING_HIT_WINDOW = 0.35
+
+-- Sent by the actor we hit, from its own I.Combat hit handler. Where the blow
+-- landed is Impact Effects' business: the engine's own hit position is the
+-- victim's feet plus a random fraction of their height, not a contact point.
 local function onAttackLanded(data)
+    local pending = pendingHitLight
+    pendingHitLight = nil
+
     if not data.successful then return end
     startShake(1)
+    if pending and now() - pending.at < PENDING_HIT_WINDOW then
+        hitLight(pending.pos)
+    end
 end
 
 -- Somebody landed a hit on us.
@@ -389,9 +403,10 @@ local function onImpact(o, var)
     if sparks or mediumArmour then
         sparkLight(pos)
     elseif isActor then
-        -- Flesh, cloth, light armour: the weaker, warmer flash. Struck scenery
-        -- gets nothing, it is only enemies that should light up.
-        hitLight(pos)
+        -- Flesh, cloth, light armour: the weaker, warmer flash, held back until
+        -- the hit is confirmed. Struck scenery gets nothing, it is only enemies
+        -- that should light up.
+        pendingHitLight = { pos = pos, at = now() }
     end
 
     if sparks and variety then
