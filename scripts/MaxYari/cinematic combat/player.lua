@@ -186,7 +186,7 @@ end
 local flashShader
 do
     local ok, wrapper = pcall(shaderUtils.ShaderWrapper.new, shaderUtils.ShaderWrapper,
-        "cc_blowout", { uStrength = 0 })
+        "cc_flash", { uStrength = 0 })
     if ok then
         flashShader = wrapper
     else

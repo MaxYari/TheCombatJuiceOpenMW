@@ -59,9 +59,16 @@ half a second peaking a tenth of the way in. **The zoom blur and the timing are
 taken from it as they stand** - the blur is what reads as impact, and the timing
 is a twentieth of a second to snap on and the rest to let go.
 
-The colour is not. That mod's flash drains to grey and puts red back in; the
-footage it was shown in does the opposite, and the footage is what this is tuned
-to match. Measured on its own frames, the flash there lifts red by 0.03 while
+The colour is not, and it cannot be. That mod's flash drains saturation to 0 and
+washes toward white, and **desaturation cannot overshoot neutral** - it moves the
+channels together, it never crosses them over. The footage crosses them over: a
+frame that reads r 0.251 / b 0.211 comes out r 0.285 / b 0.317, and its brightest
+quarter goes from warm to cold as well. So the cold cast in that video is the
+recorder's own setup on top of the mod, not something the mod does. The mod page
+agrees - it lists no ENB requirement and says everything is done in-engine.
+
+The look is still the thing worth having, so the colour here is tuned to those
+frames rather than to the plugin. Measured on its own frames, the flash there lifts red by 0.03 while
 lifting green and blue by 0.09 and 0.11 - it turns the frame cold - and
 saturation nearly doubles. So the bloom is tinted cold, a cold tint goes over
 the frame, and saturation is pushed up rather than drained. Alongside its own
@@ -70,6 +77,16 @@ frames the defaults land at `r 0.292 g 0.307 b 0.317` against the reference's
 
 For the original look instead: saturation `0`, tint `1.0, 0.22, 0.18`, tint
 amount `0.059`. Every part of it is a live uniform in the post processing HUD.
+
+**A trap worth knowing about:** OpenMW saves every post-processing uniform you
+touch into `~/.config/openmw/shaders.yaml`, keyed by technique and uniform name,
+and the parser prefers a saved value over the default in the shader file
+(`technique.cpp`, where each uniform looks itself up in `ShaderManager`). A value
+saved under a name survives that name changing meaning, which is how an earlier
+`uContrast` - a shadow crush that defaulted to 0 - ended up as a contrast
+multiplier of 0 and flattened the whole screen to one grey. Rename the technique
+when the uniform set changes meaningfully, and give a uniform a new name rather
+than a new meaning.
 
 `tools/preview_flash.py` runs the shader's arithmetic over a screenshot outside
 the game, reading the defaults out of the shader file, so a change can be

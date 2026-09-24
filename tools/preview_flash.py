@@ -10,7 +10,7 @@ import re, subprocess, sys
 from pathlib import Path
 import numpy as np
 
-SHADER = Path(__file__).resolve().parent.parent / "shaders" / "cc_blowout.omwfx"
+SHADER = Path(__file__).resolve().parent.parent / "shaders" / "cc_flash.omwfx"
 
 def defaults():
     text = SHADER.read_text()
@@ -66,9 +66,9 @@ LUMA = np.array([0.2126, 0.7152, 0.0722])
 
 def flash(img, u, s=1.0):
     def tone(c):
-        contrast = 1.0 + (u["uContrast"] - 1.0) * s
+        contrast = 1.0 + (u["uContrastMul"] - 1.0) * s
         c = (c - u["uPivot"]) * contrast + u["uPivot"]
-        return np.maximum(c * (1.0 + u["uExposure"] * s), 0.0)
+        return np.maximum(c * (1.0 + u["uExposureMul"] * s), 0.0)
 
     color = tone(zoom_blur(img, u["uRadial"] * s))
 
