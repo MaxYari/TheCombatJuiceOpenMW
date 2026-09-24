@@ -76,7 +76,13 @@ def flash(img, u, s=1.0):
     luma = bright @ LUMA
     over = np.clip((luma - u["uThreshold"]) / max(1 - u["uThreshold"], 1e-3), 0, 2)
     glare = box_blur(bright * over[..., None], img.shape[0] * u["uBloomRadius"] * 0.5)
-    color = color + glare * u["uGlareTint"] * u["uBloom"] * s
+
+    # the bloom is repainted in the tint, then a flat wash on top
+    glare_luma = glare @ LUMA
+    colorize = u.get("uGlareColorize", 0.0)
+    glare = (glare * (1 - colorize) + glare_luma[..., None] * colorize) * u["uGlareTint"]
+    color = color + glare * u["uBloom"] * s
+    color = color + u["uGlareTint"] * u.get("uWash", 0.0) * s
 
     luma = color @ LUMA
     color = luma[..., None] + (color - luma[..., None]) * (1.0 + (u["uSaturation"] - 1.0) * s)

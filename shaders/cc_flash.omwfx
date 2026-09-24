@@ -16,11 +16,11 @@ uniform_float uRadial {
 }
 
 uniform_float uContrastMul {
-    default = 1.35;
+    default = 1.0;
     min = 1.0;
     step = 0.01;
     display_name = "Contrast";
-    description = "A multiplier: 1.0 leaves contrast alone, 0 would flatten the image to a single grey. Sanguine Symphony's death imagespace uses 1.3.";
+    description = "A multiplier: 1.0 leaves contrast alone, 0 flattens the image to a single grey. Sanguine Symphony's death imagespace uses 1.3, but contrast turns about the pivot below, and in a dark cave most of the screen sits under any sensible pivot and would be darkened by it. Off by default; the bloom carries the flash instead.";
 }
 
 uniform_float uPivot {
@@ -33,7 +33,7 @@ uniform_float uPivot {
 }
 
 uniform_float uExposureMul {
-    default = 0.15;
+    default = 0.25;
     min = 0.0;
     step = 0.01;
     display_name = "Exposure Lift";
@@ -66,12 +66,29 @@ uniform_float uBloomRadius {
     description = "How far the bloom spreads, as a fraction of screen height.";
 }
 
+uniform_float uWash {
+    default = 0.08;
+    min = 0.0;
+    step = 0.01;
+    display_name = "Cold Wash";
+    description = "A flat amount of tinted light added over everything, so the flash still lands in a pitch dark cave where there is nothing bright enough to bloom. Keep it small: it lifts the blacks while it is on.";
+}
+
 uniform_float uSaturation {
     default = 1.35;
     min = 0.0;
     step = 0.01;
     display_name = "Saturation";
     description = "Colour at the peak, as a multiplier. Above 1 deepens it, which is what the reference footage does - its saturation almost doubles. 0 is fully monochrome, the way Sanguine Symphony's own death imagespace does it.";
+}
+
+uniform_float uGlareColorize {
+    default = 0.9;
+    min = 0.0;
+    max = 1.0;
+    step = 0.05;
+    display_name = "Glare Colourise";
+    description = "How far the bloom is repainted in the glare tint rather than keeping the colour of whatever is glowing. This matters: multiplying a warm glare by a cold tint cannot make blue light, there is no blue in it to scale up, so in a torchlit room a tinted bloom still comes out warm. At 1 the bloom is the tint colour and nothing else.";
 }
 
 uniform_vec3 uGlareTint {
@@ -200,7 +217,13 @@ fragment cc_flash(rt1=RT_CCGlare) {
             total += weight;
         }
         // The light the bloom adds carries the flash's colour with it.
-        color += glare / max(total, 0.0001) * uGlareTint * uBloom * s;
+        glare /= max(total, 0.0001);
+        // Repaint the bloom in the tint before adding it, so the flash brings
+        // its own colour into the room instead of amplifying the room's.
+        float glareLuma = dot(glare, CC_LUMA);
+        glare = mix(glare, vec3(glareLuma), uGlareColorize) * uGlareTint;
+        color += glare * uBloom * s;
+        color += uGlareTint * uWash * s;
 
         float luma = dot(color, CC_LUMA);
         color = mix(vec3(luma), color, mix(1.0, uSaturation, s));

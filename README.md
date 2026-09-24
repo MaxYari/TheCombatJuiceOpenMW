@@ -71,7 +71,19 @@ recorder's own setup on top of the mod, not something the mod does. The mod page
 agrees - it lists no ENB requirement and says everything is done in-engine.
 
 The look is still the thing worth having, so the colour here is tuned to those
-frames rather than to the plugin. Measured on its own frames, the flash there lifts red by 0.03 while
+frames rather than to the plugin. **Colour has to be brought in, not scaled up.** A cold tint over the bloom does
+nothing in a torchlit room: multiplying warm light by a blue tint only takes red
+out of it, because there is no blue in it to raise. So the bloom is *repainted* -
+reduced to its own brightness and given the tint's colour - and a small flat wash
+of that colour goes over everything, which is what carries the flash in a cave
+too dark to have anything worth blooming. On a dark Morrowind cave the defaults
+turn `r 0.121 g 0.109 b 0.096` into `r 0.146 g 0.196 b 0.263`.
+
+Contrast is off by default for the same reason the shadow crush was: it turns
+about a pivot, and in a cave most of the screen sits below any sensible pivot,
+so it darkens the very thing it is supposed to light up.
+
+Measured on the reference's own frames, the flash there lifts red by 0.03 while
 lifting green and blue by 0.09 and 0.11 - it turns the frame cold - and
 saturation nearly doubles. So the bloom is tinted cold, a cold tint goes over
 the frame, and saturation is pushed up rather than drained, a little harder than
