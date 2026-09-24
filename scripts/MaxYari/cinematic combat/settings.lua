@@ -139,10 +139,14 @@ I.Settings.registerGroup {
             "Radius of that light in game units."),
         number('SparkLightDuration', 'Spark Light Duration', 0.09, 0.01, nil,
             "Seconds of real time the light stays on."),
-        number('SparkLightPower', 'Spark Light Power', 1.0, 0, nil,
+        number('SparkLightPower', 'Spark Light Power', 1.0, nil, nil,
             "How brightly it lights the room, separately from how far it reaches. A Morrowind " ..
-            "light has no brightness field - what it lights is the magnitude of its colour - so " ..
-            "this scales the colour and leaves the radius alone."),
+            "light has no brightness field - the engine hands the colour straight to the " ..
+            "renderer as the light's diffuse colour - so this scales the colour and leaves the " ..
+            "radius alone. Setting a darker colour does the same thing; power is here so the two " ..
+            "can be set apart from each other.\n\nA negative value gives a negative light, " ..
+            "which Morrowind supports and OpenMW honours: it takes light out of the room instead " ..
+            "of adding any."),
         {
             key = 'SparkLightColor',
             renderer = 'color',
@@ -159,9 +163,10 @@ I.Settings.registerGroup {
             "Radius of that light in game units."),
         number('HitLightDuration', 'Other Hit Light Duration', 0.06, 0.01, nil,
             "Seconds of real time the light stays on."),
-        number('HitLightPower', 'Other Hit Light Power', 0.33, 0, nil,
+        number('HitLightPower', 'Other Hit Light Power', 0.33, nil, nil,
             "How brightly it lights the room, separately from how far it reaches. A third of " ..
-            "full, so it reads as a glint off the blow rather than a lamp being lit."),
+            "full, so it reads as a glint off the blow rather than a lamp being lit. Negative " ..
+            "values give a negative light, which drinks light instead of casting it."),
         {
             key = 'HitLightColor',
             renderer = 'color',

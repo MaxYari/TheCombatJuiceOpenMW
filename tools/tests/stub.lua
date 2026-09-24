@@ -7,6 +7,8 @@ local function note(fmt, ...) log[#log+1] = string.format(fmt, ...) end
 M.note = note
 
 M.realTime = 100.0
+M.allObjects = {}
+M.lastLightRecord = nil
 M.settingsStore = {}     -- [section][key] = value
 M.globalStore = {}       -- [section][key] = value
 M.sentGlobalEvents = {}
@@ -69,6 +71,7 @@ function M.newObject(kind, opts)
         table.insert(M.sentObjectEvents, { target = self, name = name, data = data })
     end
     function o:teleport(cell, pos) self.cell = cell; self.pos = pos; self.enabled = true end
+    table.insert(M.allObjects, o)
     function o:remove() self.valid = false end
     return o
 end
@@ -153,8 +156,21 @@ packages["openmw.types"] = {
 packages["openmw.world"] = {
     setSimulationTimeScale = function(s) M.timeScale = s; note("timeScale=%.3f", s) end,
     getSimulationTimeScale = function() return M.timeScale end,
-    createRecord = function(draft) draft.id = "cc_light_1"; return draft end,
-    createObject = function(recordId) return M.newObject("light", { id = "light" .. objectCounter }) end,
+    createRecord = function(draft)
+        M.recordCount = (M.recordCount or 0) + 1
+        draft.id = "cc_light_" .. M.recordCount
+        M.lastLightRecord = draft
+        M.records = M.records or {}
+        M.records[draft.id] = draft
+        return draft
+    end,
+    createObject = function(recordId)
+        local obj = M.newObject("light", { id = "light" .. objectCounter })
+        obj.enabled = false
+        local rec = M.records and M.records[recordId]
+        obj.recordColor = rec and rec.color and (rec.color.r .. "," .. rec.color.g)
+        return obj
+    end,
 }
 M.rayResult = { hit = false }
 packages["openmw.nearby"] = {

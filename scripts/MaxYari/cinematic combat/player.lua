@@ -347,58 +347,28 @@ local function spawnVfx(model, pos, scale)
     })
 end
 
--- A Morrowind light has no brightness of its own: how much it lights the room is
--- the magnitude of its colour, and the radius is only how far it reaches. So
--- power scales the colour and leaves the reach alone.
+-- A Morrowind light has no brightness of its own: what it lights is the
+-- magnitude of its colour, which the engine hands straight to the renderer as
+-- the diffuse colour (sceneutil/lightutil.cpp). Radius is only how far that
+-- reaches. So power scales the colour, and a colour picked darker does exactly
+-- the same thing - power is there so the two can be set apart from each other.
 --
--- Nor can a light already in the world be dimmed - its colour belongs to the
--- record, not the object. To fade one out it has to be handed over to a dimmer
--- record, so the light is played as a short run of them, each a little darker
--- than the last. Three steps is enough for a light that lives a tenth of a
--- second; the alternative is it simply vanishing.
-local LIGHT_FADE = { 1.0, 0.55, 0.22 }
-
-local pendingLights = {}
-
-local function sendLight(pos, radius, duration, color, fallback, power)
+-- A negative power gives a negative light: the engine negates the diffuse
+-- colour for those, so it drinks light out of the room instead of adding any.
+-- The global script owns the fade, because only it can hand a light over from
+-- one record to the next without the two overlapping for a frame.
+local function spawnLight(pos, radius, duration, color, fallback, power)
+    if not pos or duration <= 0 or power == 0 then return end
     core.sendGlobalEvent(DEFS.e.SpawnLight, {
         player = selfObject,
         pos = pos,
         radius = radius,
         duration = duration,
-        r = (color and color.r or fallback[1]) * power,
-        g = (color and color.g or fallback[2]) * power,
-        b = (color and color.b or fallback[3]) * power,
+        power = power or 1,
+        r = color and color.r or fallback[1],
+        g = color and color.g or fallback[2],
+        b = color and color.b or fallback[3],
     })
-end
-
-local function spawnLight(pos, radius, duration, color, fallback, power)
-    if not pos then return end
-    power = power or 1
-    if power <= 0 or duration <= 0 then return end
-
-    local step = duration / #LIGHT_FADE
-    sendLight(pos, radius, step * 1.2, color, fallback, power * LIGHT_FADE[1])
-    for i = 2, #LIGHT_FADE do
-        table.insert(pendingLights, {
-            at = now() + step * (i - 1),
-            pos = pos, radius = radius, duration = step * 1.2,
-            color = color, fallback = fallback, power = power * LIGHT_FADE[i],
-        })
-    end
-end
-
--- Due steps are sent on the frame they come up.
-local function updatePendingLights()
-    if #pendingLights == 0 then return end
-    local t = now()
-    for i = #pendingLights, 1, -1 do
-        local entry = pendingLights[i]
-        if t >= entry.at then
-            sendLight(entry.pos, entry.radius, entry.duration, entry.color, entry.fallback, entry.power)
-            table.remove(pendingLights, i)
-        end
-    end
 end
 
 local function sparkLight(pos)
@@ -571,7 +541,6 @@ end
 local function onFrame()
     updateShake()
     updateFlash()
-    updatePendingLights()
 end
 
 local function onLoad()
@@ -579,7 +548,6 @@ local function onLoad()
     encounterStartedAt = nil
     shake = nil
     flash = nil
-    pendingLights = {}
     if flashShader then flashShader.u.uStrength = 0 end
 end
 

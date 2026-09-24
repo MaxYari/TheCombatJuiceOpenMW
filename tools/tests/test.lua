@@ -207,18 +207,8 @@ check(#lights == 1 and lights[1].pos == aimPos, "and lights it where the camera 
 check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
 -- Power scales the colour, because that is what a Morrowind light's brightness
 -- is; the radius is only its reach.
-check(lights[1] and lights[1].r < 0.5 and lights[1].radius == 90,
-      "dimmed to a third, without shrinking its reach")
-
--- A light in the world cannot be dimmed - its colour is the record's, not the
--- object's - so it is handed over to dimmer records as it goes out.
-local first = lights[1].r
-stub.sentGlobalEvents = {}
-for _ = 1, 8 do frame(0.01) end
-local steps = sentLights()
-check(#steps == 2, "and is followed by dimmer copies rather than simply vanishing")
-check(steps[1] and steps[2] and steps[1].r < first and steps[2].r < steps[1].r,
-      "each one darker than the last")
+check(lights[1] and lights[1].power < 0.5 and lights[1].radius == 90,
+      "dimmed by power to a third, without shrinking its reach")
 
 -- Swinging at someone off to the side: the camera ray misses them, so the point
 -- comes from a ray straight at them instead. This is the case Impact Effects
@@ -332,17 +322,43 @@ end
 check(math.abs(minScale - 0.2) < 0.02, "slow motion eases down to its scale")
 check(math.abs(stub.timeScale - 1) < 1e-6, "and comes back to normal speed")
 
-global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = { x = 1, y = 2, z = 3 },
-    radius = 160, duration = 0.09, r = 0.62, g = 0.78, b = 1.0 })
-global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = { x = 4, y = 5, z = 6 },
-    radius = 90, duration = 0.06, r = 1.0, g = 0.86, b = 0.6 })
-local saved = global.engineHandlers.onSave()
-local sets = 0
-for _ in pairs(saved.lightSets or {}) do sets = sets + 1 end
-check(sets == 2, "the cold and the warm light get a record and a pool each")
-stub.realTime = stub.realTime + 0.2
+-- A light fades by being handed from one record to a darker one. Track how many
+-- are lit on each frame: two at once would read as a flicker, and none would be
+-- a hole in the fade.
+local function litCount()
+    local n = 0
+    for _, obj in ipairs(stub.allObjects) do
+        if obj.kind == "light" and obj.enabled and obj:isValid() then n = n + 1 end
+    end
+    return n
+end
+
+stub.allObjects = {}
+global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = stub.vec3(1, 2, 3),
+    radius = 160, duration = 0.2, power = 1, r = 0.62, g = 0.78, b = 1.0 })
+local worst, levels, lastPower = 0, 0, nil
+for _ = 1, 40 do
+    stub.realTime = stub.realTime + 0.005
+    global.engineHandlers.onUpdate()
+    local lit = litCount()
+    worst = math.max(worst, lit)
+    local power = nil
+    for _, obj in ipairs(stub.allObjects) do
+        if obj.enabled and obj.recordColor then power = obj.recordColor end
+    end
+    if power and power ~= lastPower then levels = levels + 1 lastPower = power end
+end
+check(worst <= 1, "never more than one light is lit at a time, so the fade cannot flicker")
+check(levels >= 3, "and it steps down through several levels on the way out (" .. levels .. ")")
+stub.realTime = stub.realTime + 0.05
 global.engineHandlers.onUpdate()
-check(true, "and both are switched off again without error")
+check(litCount() == 0, "and is out at the end")
+
+stub.allObjects = {}
+global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = stub.vec3(4, 5, 6),
+    radius = 90, duration = 0.06, power = -0.5, r = 1.0, g = 0.86, b = 0.6 })
+check(stub.lastLightRecord and stub.lastLightRecord.isNegative,
+      "a negative power asks the engine for a negative light")
 
 print("\n== loading actor.lua ==")
 local npc = stub.newObject("npc", { id = "bandit_z" })

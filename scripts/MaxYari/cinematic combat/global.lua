@@ -58,22 +58,35 @@ end
 
 -- Impact lights -------------------------------------------------------------
 --
--- A few light objects per colour and radius, parked disabled and teleported into
--- place for a few frames at a time. Creating and removing an object per hit would
--- churn the save file; these are made once and live in it.
+-- A few light objects per colour and radius, parked disabled and teleported
+-- into place for a few frames at a time. Creating and removing an object per
+-- hit would churn the save file; these are made once and live in it.
+--
+-- A light already in the world cannot be dimmed: its colour belongs to the
+-- record, and a record cannot be edited once it exists. Fading one out means
+-- handing it over to a darker record, so each light is quantised into
+-- FADE_LEVELS of power and moves down them as it dies. The handover happens
+-- here rather than in the player script so that the new light is placed and the
+-- old one switched off in the same update, which is what keeps two of them from
+-- ever being lit on the same frame - that would read as a flicker, and doubling
+-- the light for a frame is exactly what a fade must not do.
 
 local POOL_SIZE = 3
-local lightSets = {} -- [key] = { recordId, pool = {}, busy = {} }
+local FADE_LEVELS = 10
+local FADE_FROM = 0.5 -- the light holds full power until halfway through its life
 
-local function lightKey(radius, r, g, b)
-    return string.format("%d:%d:%d:%d", math.floor(radius), math.floor(r * 255),
-        math.floor(g * 255), math.floor(b * 255))
+local lightSets = {} -- [key] = { recordId, pool = {}, busy = {} }
+local activeLights = {}
+
+local function lightKey(radius, r, g, b, negative)
+    return string.format("%d:%d:%d:%d:%s", math.floor(radius), math.floor(r * 255),
+        math.floor(g * 255), math.floor(b * 255), negative and "n" or "p")
 end
 
-local function lightSet(data)
-    local key = lightKey(data.radius, data.r, data.g, data.b)
+local function lightSet(radius, r, g, b, negative)
+    local key = lightKey(radius, r, g, b, negative)
     local set = lightSets[key]
-    if set and set.recordId then return set end
+    if set and set.recordId then return set, key end
 
     local ok, record = pcall(function()
         return world.createRecord(types.Light.createRecordDraft {
@@ -83,14 +96,14 @@ local function lightSet(data)
             weight = 0,
             value = 0,
             duration = -1,
-            radius = data.radius,
-            color = util.color.rgb(data.r, data.g, data.b),
+            radius = radius,
+            color = util.color.rgb(r, g, b),
             isCarriable = false,
             isDynamic = true,
             isFire = false,
             isFlicker = false,
             isFlickerSlow = false,
-            isNegative = false,
+            isNegative = negative and true or false,
             isOffByDefault = false,
             isPulse = false,
             isPulseSlow = false,
@@ -104,7 +117,7 @@ local function lightSet(data)
     set = set or { pool = {}, busy = {} }
     set.recordId = record.id
     lightSets[key] = set
-    return set
+    return set, key
 end
 
 local function takeLight(set)
@@ -122,24 +135,68 @@ local function takeLight(set)
     return obj
 end
 
+local function releaseLight(light)
+    if not light.obj then return end
+    if light.obj:isValid() then light.obj.enabled = false end
+    local set = lightSets[light.key]
+    if set then set.busy[light.obj.id] = nil end
+    light.obj = nil
+end
+
+-- Place the light at `level`, and put out whatever was lit before it. Both
+-- happen in this one update, so exactly one of them is lit on any frame.
+local function setLevel(light, level)
+    local fraction = level / FADE_LEVELS
+    local set, key = lightSet(light.radius, light.r * fraction, light.g * fraction,
+        light.b * fraction, light.negative)
+    if not set then return false end
+
+    local obj = takeLight(set)
+    if not obj then return false end -- keep the light we have rather than going dark
+
+    local previous = { obj = light.obj, key = light.key }
+    obj:teleport(light.player.cell, light.pos) -- teleport also enables it
+    set.busy[obj.id] = true
+    light.obj, light.key, light.level = obj, key, level
+    releaseLight(previous)
+    return true
+end
+
 local function onSpawnLight(data)
     if not data.player or not data.player:isValid() or not data.pos then return end
-    local set = lightSet(data)
-    if not set then return end
-    local obj = takeLight(set)
-    if not obj then return end
-    obj:teleport(data.player.cell, data.pos) -- also enables it
-    set.busy[obj.id] = { obj = obj, until_ = now() + (data.duration or 0.08) }
+    local power = data.power or 1
+    if power == 0 then return end
+
+    local light = {
+        player = data.player,
+        pos = data.pos,
+        radius = data.radius or 120,
+        duration = data.duration or 0.08,
+        negative = power < 0,
+        r = data.r * math.abs(power),
+        g = data.g * math.abs(power),
+        b = data.b * math.abs(power),
+        startedAt = now(),
+        level = 0,
+    }
+    if setLevel(light, FADE_LEVELS) then table.insert(activeLights, light) end
 end
 
 local function updateLights()
     local t = now()
-    for _, set in pairs(lightSets) do
-        for id, entry in pairs(set.busy) do
-            if t >= entry.until_ then
-                if entry.obj:isValid() then entry.obj.enabled = false end
-                set.busy[id] = nil
+    for i = #activeLights, 1, -1 do
+        local light = activeLights[i]
+        local age = (t - light.startedAt) / light.duration
+        if age >= 1 then
+            releaseLight(light)
+            table.remove(activeLights, i)
+        else
+            local wanted = FADE_LEVELS
+            if age > FADE_FROM then
+                wanted = math.ceil(FADE_LEVELS * (1 - age) / (1 - FADE_FROM))
             end
+            wanted = math.max(1, math.min(FADE_LEVELS, wanted))
+            if wanted ~= light.level then setLevel(light, wanted) end
         end
     end
 end
@@ -159,12 +216,7 @@ local function onUpdate()
         end
         applyScale()
     end
-    for _, set in pairs(lightSets) do
-        if next(set.busy) ~= nil then
-            updateLights()
-            break
-        end
-    end
+    if #activeLights > 0 then updateLights() end
 end
 
 local function resetTime()
@@ -184,6 +236,7 @@ end
 
 local function onLoad(state)
     resetTime()
+    activeLights = {}
     lightSets = {}
     if state and state.lightSets then
         for key, set in pairs(state.lightSets) do

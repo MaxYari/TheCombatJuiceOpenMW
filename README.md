@@ -167,15 +167,24 @@ light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
 scenery gets the spark light but never the warm one, and being hit yourself
 lights nothing at all: it would be lighting your own face.
 
-A Morrowind light has no brightness field. What it lights is the magnitude of
-its colour, and the radius is only how far it reaches - so **Power** scales the
-colour, leaving the reach alone. The warm one ships at a third, which reads as a
-glint off the blow rather than a lamp being lit next to you.
+A Morrowind light has no brightness field. The engine hands the record's colour
+straight to the renderer as the light's diffuse colour, and the radius only sets
+how far that reaches - so **Power** scales the colour, and picking a darker
+colour does exactly the same thing. Power exists so the two can be set apart
+from each other. The warm one ships at a third, which reads as a glint off the
+blow rather than a lamp being lit next to you.
+
+**Negative power gives a negative light.** Morrowind has them and OpenMW honours
+the flag - it negates the diffuse colour - so a light with negative power drinks
+light out of the room instead of casting any.
 
 Nor can a light already in the world be dimmed: its colour belongs to the record
-rather than to the object, and a record cannot be edited once it exists. So a
-light is played as a short run of three, each darker than the last, which fades
-it out instead of having it vanish between one frame and the next.
+rather than to the object, and a record cannot be edited once it exists. Fading
+one means handing it over to a darker record, so each light is quantised into
+ten levels of power and steps down them over the second half of its life. The
+handover is done in the global script, which places the new light and switches
+the old one off in the same update - two lit on one frame would read as a
+flicker, and doubling the light is the one thing a fade must not do.
 
 **Where the blow landed** is worked out here rather than taken from anyone else,
 because neither available answer is good enough. The engine's hit position is
