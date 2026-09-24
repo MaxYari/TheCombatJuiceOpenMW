@@ -1,4 +1,4 @@
-# Cinematic Combat
+# Combat Juice
 
 An OpenMW Lua mod that makes melee land harder: kills drop the world into slow
 motion, the camera shakes when a hit connects, the screen blows out like a
@@ -223,13 +223,13 @@ reused rather than created and destroyed per hit.
 
 ## Settings
 
-Everything above is in Options → Scripts → **Cinematic Combat**, in four groups:
+Everything above is in Options → Scripts → **Combat Juice**, in four groups:
 Slow Motion, Camera Shake, Kill Flash and Impact Lights.
 
 ## Installing
 
 <!-- nexus-skip-start -->
-Add the folder as a data path and enable `CinematicCombat.omwscripts` in the
+Add the folder as a data path and enable `CombatJuice.omwscripts` in the
 launcher, after MSS. If this is the first OpenMW mod you have installed,
 [read this first](https://modding-openmw.com/tips/installing-mods/).
 
@@ -239,7 +239,7 @@ The meshes and textures in this repository are generated, and both scripts are
 safe to re-run:
 
 ```sh
-python3 tools/make_spark_textures.py     # textures/MaxYari/cinematic combat/spark_streak.png
+python3 tools/make_spark_textures.py     # textures/MaxYari/combat juice/spark_streak.png
 <blender>/python/bin/python3 tools/make_sparks.py   # meshes/e/impact/*.nif
 ```
 
@@ -258,7 +258,7 @@ the OpenMW Lua API and drives the real files through hits, kills, short and long
 fights, every trigger, the time scale and the impact lights:
 
 ```sh
-lua tools/tests/test.lua "scripts/MaxYari/cinematic combat"
+lua tools/tests/test.lua "scripts/MaxYari/combat juice"
 ```
 
 The shader has its own checker, which applies the rules OpenMW's `.omwfx` parser
@@ -277,7 +277,7 @@ python3 tools/check_omwfx.py shaders/*.omwfx
 every push to `main`. Before the first release, fill in `NEXUS_PAGE`,
 `NEXUSMODS_FILE_ID` and `NEXUSMODS_MOD_ID` at the top of that file and add the
 `NEXUSMODS_API_KEY` repository secret. The version published is the first
-`version = ...` in `scripts/MaxYari/cinematic combat/player.lua`.
+`version = ...` in `scripts/MaxYari/combat juice/player.lua`.
 
 Enable the README → BBCode hook once per clone:
 

@@ -25,7 +25,7 @@ Each family of sparks is baked several times over, with different counts and
 seeds, and some of the variants carry a cluster of sparks thrown much harder
 than the rest - they leave fast, travel several times as far and outlive the
 burst. Variant 1 keeps the name Impact Effects plays, the rest sit in
-meshes/MaxYari/cinematic combat/sparks/ and the mod picks between them at
+meshes/MaxYari/combat juice/sparks/ and the mod picks between them at
 random. The loose cluster files there are added on top of impacts whose effect
 this mod does not replace outright.
 
@@ -47,7 +47,7 @@ sys.path.insert(0, ES3_LIB)
 import numpy as np  # noqa: E402
 from es3 import nif  # noqa: E402
 
-TEX = "textures\\MaxYari\\cinematic combat\\"
+TEX = "textures\\MaxYari\\combat juice\\"
 STREAK_TEX = TEX + "spark_streak.png"
 
 # Alpha: blending on, SRC_ALPHA + ONE (additive), no alpha test.
@@ -309,7 +309,7 @@ def build_streak(index, rng, params):
 
 def build_streaks(streaks):
     """Wrap a list of streak nodes into a finished NIF."""
-    root = nif.NiNode(name="CinematicCombatSpark", flags=10, children=streaks)
+    root = nif.NiNode(name="CombatJuiceSpark", flags=10, children=streaks)
     stream = nif.NiStream()
     stream.root = root
     return stream
@@ -334,14 +334,14 @@ def build_lightsource():
     """An empty node. A Light record needs a model, and the spark flash light
     has nothing to draw - it is there for its radius alone."""
     stream = nif.NiStream()
-    stream.root = nif.NiNode(name="CinematicCombatLightSource", flags=10)
+    stream.root = nif.NiNode(name="CombatJuiceLightSource", flags=10)
     return stream
 
 
 def main():
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent
     impact_dir = root / "meshes" / "e" / "impact"
-    spark_dir = root / "meshes" / "MaxYari" / "cinematic combat" / "sparks"
+    spark_dir = root / "meshes" / "MaxYari" / "combat juice" / "sparks"
     impact_dir.mkdir(parents=True, exist_ok=True)
     spark_dir.mkdir(parents=True, exist_ok=True)
 
@@ -365,7 +365,7 @@ def main():
         stream.save(path)
         print(f"wrote {path.name:<20} {count} streaks thrown hard")
 
-    light_dir = root / "meshes" / "MaxYari" / "cinematic combat"
+    light_dir = root / "meshes" / "MaxYari" / "combat juice"
     build_lightsource().save(light_dir / "lightsource.nif")
     print(f"wrote {'lightsource.nif':<20} (the spark flash light's model)")
 

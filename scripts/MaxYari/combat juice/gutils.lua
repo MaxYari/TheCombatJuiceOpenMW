@@ -8,7 +8,7 @@ function module.print(...)
     if type(lvl) ~= "number" then lvl = 1 else table.remove(args) end
     if lvl > DebugLevel then return end
     for i, v in ipairs(args) do args[i] = tostring(v) end
-    print("[CinematicCombat]: " .. table.concat(args, " "))
+    print("[CombatJuice]: " .. table.concat(args, " "))
 end
 
 function module.lerp(a, b, t)

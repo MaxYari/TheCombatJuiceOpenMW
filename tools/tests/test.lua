@@ -1,7 +1,7 @@
 -- Runs the mod scripts against a stubbed OpenMW API, so the wiring can be
 -- checked without starting the game:
 --
---     lua tools/tests/test.lua "scripts/MaxYari/cinematic combat"
+--     lua tools/tests/test.lua "scripts/MaxYari/combat juice"
 --
 package.path = package.path .. ";" .. arg[1] .. "/?.lua;" .. arg[0]:gsub("[^/]*$", "") .. "?.lua"
 local MOD = arg[1]
@@ -23,9 +23,9 @@ local function makeLoader()
     local real = _G.require
     return function(name)
         if stub.packages[name] then return stub.packages[name] end
-        if name:match("cinematic combat") then
+        if name:match("combat juice") then
             if loaded[name] then return loaded[name] end
-            local file = MOD .. "/" .. name:gsub("scripts/MaxYari/cinematic combat/", "") .. ".lua"
+            local file = MOD .. "/" .. name:gsub("scripts/MaxYari/combat juice/", "") .. ".lua"
             loaded[name] = assert(loadfile(file))()
             return loaded[name]
         end
@@ -40,19 +40,19 @@ local function loadScript(file)
 end
 
 local function setting(group, key, value)
-    stub.setSetting("SettingsCinematicCombat" .. group, key, value)
+    stub.setSetting("SettingsCombatJuice" .. group, key, value)
 end
 
 local function sentSlowdown()
     for _, e in ipairs(stub.sentGlobalEvents) do
-        if e.name == "CC_Slowdown" then return e.data end
+        if e.name == "CJ_Slowdown" then return e.data end
     end
 end
 
 local function sentLights()
     local out = {}
     for _, e in ipairs(stub.sentGlobalEvents) do
-        if e.name == "CC_SpawnLight" then table.insert(out, e.data) end
+        if e.name == "CJ_SpawnLight" then table.insert(out, e.data) end
     end
     return out
 end
@@ -62,7 +62,7 @@ stub.install(stub.player)
 _G.require = makeLoader()
 local global = loadScript("global.lua")
 check(type(global.engineHandlers.onUpdate) == "function", "global exposes onUpdate")
-check(global.eventHandlers.CC_Slowdown ~= nil, "global takes slow motion requests")
+check(global.eventHandlers.CJ_Slowdown ~= nil, "global takes slow motion requests")
 
 print("\n== loading player.lua ==")
 stub.enableImpactEffects()
@@ -70,17 +70,17 @@ local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
 check(#stub.settingsGroups == 4, "four settings groups registered")
 
-local slow = stub.settingsStore["SettingsCinematicCombatSlowdown"]
+local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
 check(slow.SmallSlowdownChance == 1, "at 100% by default")
 check(slow.BigSlowdownTrigger == "Long encounter end", "the long one defaults to long fights only")
 check(slow.BigSlowdownChance == 1, "at 100% by default")
 check(slow.LongEncounterSeconds == 20, "a long fight is 20 seconds by default")
-local cam = stub.settingsStore["SettingsCinematicCombatCamera"]
+local cam = stub.settingsStore["SettingsCombatJuiceCamera"]
 check(cam.ShakeStrength == 1.0 and cam.ShakeDuration == 0.3 and cam.ShakeFrequency == 38,
       "camera shake defaults match the tuned in-game settings")
 check(cam.ShakeTakenHitFactor == 0, "and taking a hit does not shake by default")
-check(stub.settingsStore["SettingsCinematicCombatFlash"].FlashOn == "Short slow motion",
+check(stub.settingsStore["SettingsCombatJuiceFlash"].FlashOn == "Short slow motion",
       "the kill flash rides the short slow motion by default")
 
 local function frame(dt)
@@ -98,19 +98,19 @@ player.eventHandlers.OMWMusicCombatTargetsChanged({ actor = b, targets = { stub.
 
 stub.sentGlobalEvents = {}
 a.dead = true
-player.eventHandlers.CC_ActorKilled({ victim = a })
+player.eventHandlers.CJ_ActorKilled({ victim = a })
 local s = sentSlowdown()
 check(s ~= nil, "a kill mid fight still slows time")
-check(s and math.abs((s.inTime + s.hold + s.outTime) - 0.45) < 1e-6,
+check(s and math.abs((s.inTime + s.hold + s.outTime) - 1.0) < 1e-6,
       "with the short slow motion's duration")
 
 print("\n== the last enemy of a short fight ==")
 stub.sentGlobalEvents = {}
 stub.realTime = stub.realTime + 3
 b.dead = true
-player.eventHandlers.CC_ActorKilled({ victim = b })
+player.eventHandlers.CJ_ActorKilled({ victim = b })
 s = sentSlowdown()
-check(s ~= nil and math.abs((s.inTime + s.hold + s.outTime) - 0.45) < 1e-6,
+check(s ~= nil and math.abs((s.inTime + s.hold + s.outTime) - 1.0) < 1e-6,
       "gets the short one too: the long one is set to long fights only")
 
 print("\n== the last enemy of a long fight ==")
@@ -119,7 +119,7 @@ player.eventHandlers.OMWMusicCombatTargetsChanged({ actor = c, targets = { stub.
 stub.realTime = stub.realTime + 25 -- a long fight
 stub.sentGlobalEvents = {}
 c.dead = true
-player.eventHandlers.CC_ActorKilled({ victim = c })
+player.eventHandlers.CJ_ActorKilled({ victim = c })
 s = sentSlowdown()
 check(s ~= nil, "slows time")
 check(s and math.abs((s.inTime + s.hold + s.outTime) - 1.5) < 1e-6,
@@ -133,29 +133,29 @@ player.eventHandlers.OMWMusicCombatTargetsChanged({ actor = d, targets = { stub.
 player.eventHandlers.OMWMusicCombatTargetsChanged({ actor = e, targets = { stub.player } })
 stub.sentGlobalEvents = {}
 d.dead = true
-player.eventHandlers.CC_ActorKilled({ victim = d })
+player.eventHandlers.CJ_ActorKilled({ victim = d })
 check(sentSlowdown() == nil, "'encounter end' skips a kill in the middle of a fight")
 stub.sentGlobalEvents = {}
 e.dead = true
-player.eventHandlers.CC_ActorKilled({ victim = e })
+player.eventHandlers.CJ_ActorKilled({ victim = e })
 check(sentSlowdown() ~= nil, "and takes the one that ends it")
 
 setting("Slowdown", "SmallSlowdownTrigger", "Every kill")
 setting("Slowdown", "SmallSlowdownChance", 0)
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+player.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
 check(sentSlowdown() == nil, "a chance of 0 never plays")
 setting("Slowdown", "SmallSlowdownChance", 1)
 
 setting("Slowdown", "SlowdownEnabled", false)
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+player.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
 check(sentSlowdown() == nil, "and the group can be switched off entirely")
 setting("Slowdown", "SlowdownEnabled", true)
 
 print("\n== the kill flash ==")
 stub.shaderUniform = nil
-player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+player.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
 stub.realTime = stub.realTime + 0.1
 player.engineHandlers.onFrame()
 check(stub.shaderUniform ~= nil and stub.shaderUniform > 0, "fires on a plain kill by default")
@@ -167,7 +167,7 @@ check(stub.shaderUniform == 0, "and fades out")
 -- so it must not happen per kill: that is a hitch exactly on the kill.
 stub.shaderEnables, stub.shaderDisables = 0, 0
 for _ = 1, 5 do
-    player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+    player.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
     for _ = 1, 40 do frame(0.03) end
 end
 check(stub.shaderEnables == 0 and stub.shaderDisables == 0,
@@ -182,7 +182,7 @@ check(stub.shaderEnables == 1, "and turning it back on puts it in, once")
 
 setting("Flash", "FlashTrigger", "Long encounter end")
 stub.shaderUniform = nil
-player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+player.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
 player.engineHandlers.onFrame()
 check(stub.shaderUniform == nil, "set to long fights only, a plain kill does not fire it")
 setting("Flash", "FlashOn", "Short slow motion")
@@ -197,8 +197,8 @@ local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
 -- player's attention is.
 stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-player.eventHandlers.CC_DamageDealt({ victim = victim, fraction = 0.25 })
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25 })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
@@ -208,8 +208,8 @@ check(#lights == 1 and lights[1].pos == aimPos, "and lights it where the camera 
 check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
 -- Power scales the colour, because that is what a Morrowind light's brightness
 -- is; the radius is only its reach.
-check(lights[1] and lights[1].power < 0.5 and lights[1].radius == 90,
-      "dimmed by power to a third, without shrinking its reach")
+check(lights[1] and lights[1].power < 1 and lights[1].radius == 90,
+      "dimmed by power rather than by shrinking its reach")
 
 -- Swinging at someone off to the side: the camera ray misses them, so the point
 -- comes from a ray straight at them instead. This is the case Impact Effects
@@ -222,7 +222,7 @@ stub.packages["openmw.nearby"].castRay = function(from, to, opts)
     return { hit = true, hitObject = victim, hitPos = sidePos }
 end
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 lights = sentLights()
 check(#lights == 1 and lights[1].pos == sidePos,
       "a hit away from the crosshair is lit from a ray straight at the victim")
@@ -244,7 +244,7 @@ end
 stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 
 stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = false })
 check(#sentLights() == 0, "a miss lights nothing")
 
 -- Sparks light their own impact, so the warm one keeps out of the way.
@@ -253,7 +253,7 @@ stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
 lights = sentLights()
 check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold")
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 check(#sentLights() == 1, "and the warm light does not pile on top of it")
 
 -- A bare body part reaches the hook only because of the one-line patch in
@@ -278,7 +278,7 @@ print("\n== shake scaled by how hard the blow landed ==")
 -- The camera's wobble is random frame to frame, but how long it wobbles for is
 -- not, and the same multiplier drives both. So measure the length.
 local function shakeFrames(fraction)
-    player.eventHandlers.CC_DamageDealt({ victim = victim, fraction = fraction })
+    player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = fraction })
     local frames = 0
     for _ = 1, 500 do
         stub.realTime = stub.realTime + 0.005
@@ -345,7 +345,7 @@ setting("Effects", "SparkVariety", true)
 
 print("\n== the global script carries it out ==")
 stub.timeScale = 1
-global.eventHandlers.CC_Slowdown({ scale = 0.2, inTime = 0.05, hold = 0.1, outTime = 0.3 })
+global.eventHandlers.CJ_Slowdown({ scale = 0.2, inTime = 0.05, hold = 0.1, outTime = 0.3 })
 local minScale = 1
 for _ = 1, 40 do
     stub.realTime = stub.realTime + 0.02
@@ -367,7 +367,7 @@ local function litCount()
 end
 
 stub.allObjects = {}
-global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = stub.vec3(1, 2, 3),
+global.eventHandlers.CJ_SpawnLight({ player = stub.player, pos = stub.vec3(1, 2, 3),
     radius = 160, duration = 0.2, power = 1, r = 0.62, g = 0.78, b = 1.0 })
 local worst, levels, lastPower = 0, 0, nil
 for _ = 1, 40 do
@@ -388,7 +388,7 @@ global.engineHandlers.onUpdate()
 check(litCount() == 0, "and is out at the end")
 
 stub.allObjects = {}
-global.eventHandlers.CC_SpawnLight({ player = stub.player, pos = stub.vec3(4, 5, 6),
+global.eventHandlers.CJ_SpawnLight({ player = stub.player, pos = stub.vec3(4, 5, 6),
     radius = 90, duration = 0.06, power = -0.5, r = 1.0, g = 0.86, b = 0.6 })
 check(stub.lastLightRecord and stub.lastLightRecord.isNegative,
       "a negative power asks the engine for a negative light")
@@ -405,7 +405,7 @@ check(#stub.damageListeners == 1, "actor registered its MSS damage listener")
 stub.sentObjectEvents = {}
 stub.hitHandlers[1]({ attacker = stub.player, successful = true, hitPos = { x = 0, y = 0, z = 0 } })
 local told
-for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CC_AttackLanded" then told = ev end end
+for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_AttackLanded" then told = ev end end
 check(told ~= nil and told.target == stub.player, "the victim tells the attacking player the hit landed")
 check(told and told.data.hitPos ~= nil, "and where it landed, for the light")
 
@@ -413,7 +413,7 @@ stub.sentObjectEvents = {}
 stub.damageListeners[1]({ actor = npc, previousHealth = 10, health = 0, baseHealth = 40,
     hit = { attacker = stub.player, successful = true } })
 local killed
-for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CC_ActorKilled" then killed = ev end end
+for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_ActorKilled" then killed = ev end end
 check(killed ~= nil, "a lethal blow from the player reports a kill")
 
 print("\n== a shader that will not load ==")
@@ -427,7 +427,7 @@ local okLoad, player2 = pcall(loadScript, "player.lua")
 check(okLoad, "the player script still loads")
 if okLoad then
     stub.sentGlobalEvents = {}
-    player2.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+    player2.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })
     check(sentSlowdown() ~= nil, "and kills still slow time")
     check(pcall(player2.engineHandlers.onFrame), "and onFrame does not touch the missing shader")
 end

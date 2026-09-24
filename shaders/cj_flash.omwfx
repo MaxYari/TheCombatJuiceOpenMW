@@ -125,7 +125,7 @@ uniform_float uTintAmount {
 }
 
 shared {
-    const vec3 CC_LUMA = vec3(0.2126, 0.7152, 0.0722);
+    const vec3 CJ_LUMA = vec3(0.2126, 0.7152, 0.0722);
 
     // Contrast about a low pivot, then a straight lift. Everything the flash
     // does to tone happens here, so the bright pass and the composite agree on
@@ -168,14 +168,14 @@ fragment cc_bright(target=RT_CCGlare) {
         c *= 0.25;
 
         vec3 toned = ccTone(c, uStrength);
-        float luma = dot(toned, CC_LUMA);
+        float luma = dot(toned, CJ_LUMA);
         float over = clamp((luma - uThreshold) / max(1.0 - uThreshold, 0.001), 0.0, 2.0);
 
         omw_FragColor = vec4(toned * over, 1.0);
     }
 }
 
-fragment cc_flash(rt1=RT_CCGlare) {
+fragment cj_flash(rt1=RT_CCGlare) {
     omw_In vec2 omw_TexCoord;
 
     const int ZOOM_TAPS = 6;
@@ -229,11 +229,11 @@ fragment cc_flash(rt1=RT_CCGlare) {
         glare /= max(total, 0.0001);
         // Repaint the bloom in the tint before adding it, so the flash brings
         // its own colour into the room instead of amplifying the room's.
-        float glareLuma = dot(glare, CC_LUMA);
+        float glareLuma = dot(glare, CJ_LUMA);
         glare = mix(glare, vec3(glareLuma), uGlareColorize) * uGlareTint;
         color += glare * uBloom * s;
 
-        float luma = dot(color, CC_LUMA);
+        float luma = dot(color, CJ_LUMA);
         color = mix(vec3(luma), color, mix(1.0, uSaturation, s));
 
         // Everything below is held off the shadows. Laid over the whole frame it
@@ -248,8 +248,8 @@ fragment cc_flash(rt1=RT_CCGlare) {
 }
 
 technique {
-    passes = cc_bright, cc_flash;
-    description = "Cinematic Combat: a kill flash - zoom blur and contrast after Sanguine Symphony's death imagespace, with the cold bloom of the footage it was shown in.";
+    passes = cc_bright, cj_flash;
+    description = "Combat Juice: a kill flash - zoom blur and contrast after Sanguine Symphony's death imagespace, with the cold bloom of the footage it was shown in.";
     version = "1.2";
     author = "Max Yari";
     dynamic = true;

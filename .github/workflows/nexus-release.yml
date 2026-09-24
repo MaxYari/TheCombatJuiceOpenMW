@@ -42,9 +42,9 @@ env:
   # From the "Advanced" panel of the main file on Nexus. Not secret.
   NEXUSMODS_FILE_ID: "PUT_FILE_ID_HERE"
   NEXUSMODS_MOD_ID: "PUT_INTERNAL_MOD_ID_HERE" # internal mod ID, not the one from the page URL
-  FILE_DISPLAY_NAME: Cinematic Combat # Shown on Nexus as "Cinematic Combat v<version>"
-  ZIP_NAME: CinematicCombat
-  VERSION_SOURCE: scripts/MaxYari/cinematic combat/player.lua
+  FILE_DISPLAY_NAME: Combat Juice # Shown on Nexus as "Combat Juice v<version>"
+  ZIP_NAME: CombatJuice
+  VERSION_SOURCE: scripts/MaxYari/combat juice/player.lua
 
 jobs:
   nexus:

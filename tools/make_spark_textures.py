@@ -13,7 +13,7 @@ import struct
 import zlib
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent.parent / "textures" / "MaxYari" / "cinematic combat"
+OUT = Path(__file__).resolve().parent.parent / "textures" / "MaxYari" / "combat juice"
 
 # Tint ramp, hottest first. Positions are 0 (core / head) to 1 (edge / tail).
 RAMP = [

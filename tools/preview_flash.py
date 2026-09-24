@@ -10,7 +10,7 @@ import re, subprocess, sys
 from pathlib import Path
 import numpy as np
 
-SHADER = Path(__file__).resolve().parent.parent / "shaders" / "cc_flash.omwfx"
+SHADER = Path(__file__).resolve().parent.parent / "shaders" / "cj_flash.omwfx"
 
 def defaults():
     text = SHADER.read_text()

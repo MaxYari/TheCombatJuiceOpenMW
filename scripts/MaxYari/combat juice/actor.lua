@@ -2,7 +2,7 @@
 -- and kills that concern them: the victim is the only one the engine tells
 -- whether an attack landed, and where.
 
-local mp = "scripts/MaxYari/cinematic combat/"
+local mp = "scripts/MaxYari/combat juice/"
 
 local omwself = require('openmw.self')
 local core = require("openmw.core")

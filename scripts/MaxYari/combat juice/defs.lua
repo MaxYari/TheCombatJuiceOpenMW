@@ -1,4 +1,4 @@
-local prefix = "CC_"
+local prefix = "CJ_"
 
 -- When an effect is allowed to play. A single kill can satisfy several of these
 -- at once - the last enemy of a long fight is also an encounter end and also
@@ -19,8 +19,8 @@ local TRIGGER_RANK = {
 }
 
 return {
-    modName = "Cinematic Combat",
-    modId = "CinematicCombat", -- identifies this mod to Dynamic Camera's extra angle API
+    modName = "Combat Juice",
+    modId = "CombatJuice", -- identifies this mod to Dynamic Camera's extra angle API
 
     TRIGGER = TRIGGER,
     TRIGGER_RANK = TRIGGER_RANK,
@@ -48,10 +48,10 @@ return {
 
     -- Settings groups, also the names of their storage sections.
     settings = {
-        slowdown = "SettingsCinematicCombatSlowdown",
-        camera = "SettingsCinematicCombatCamera",
-        flash = "SettingsCinematicCombatFlash",
-        effects = "SettingsCinematicCombatEffects",
+        slowdown = "SettingsCombatJuiceSlowdown",
+        camera = "SettingsCombatJuiceCamera",
+        flash = "SettingsCombatJuiceFlash",
+        effects = "SettingsCombatJuiceEffects",
     },
 
     -- Impact Effects materials that throw sparks. Everything else on an actor

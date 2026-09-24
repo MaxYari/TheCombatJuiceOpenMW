@@ -1,10 +1,10 @@
--- Cinematic Combat - kill slow motion, an exposure blow-out on the kill,
+-- Combat Juice - kill slow motion, an exposure blow-out on the kill,
 -- camera shake and impact lights.
 -- Mod version, published to Nexus by .github/workflows/nexus-release.yml
 -- (the first `version = ...` in this file)
 local VERSION = "1.1"
 
-local mp = "scripts/MaxYari/cinematic combat/"
+local mp = "scripts/MaxYari/combat juice/"
 
 local omwself = require("openmw.self")
 local core = require("openmw.core")
@@ -23,8 +23,8 @@ require(mp .. "settings")
 
 -- Max Yari's Script Services (MSS) is a required dependency: checked once, when this script loads.
 if not core.contentFiles.has("MaxYariScriptServices.omwscripts") then
-    print("[Cinematic Combat] ERROR: critical dependency is missing: Max Yari's Script Services (MSS). Please install it.")
-    ui.showMessage("Cinematic Combat: Critical dependency is missing, please install Max Yari's Script Services (MSS)")
+    print("[Combat Juice] ERROR: critical dependency is missing: Max Yari's Script Services (MSS). Please install it.")
+    ui.showMessage("Combat Juice: Critical dependency is missing, please install Max Yari's Script Services (MSS)")
 end
 
 local slowdownSettings = SettingsHelper:new(DEFS.settings.slowdown)
@@ -194,7 +194,7 @@ local SLOWDOWN_SHAPE = { inTime = 0.04, hold = 0.30, outTime = 0.66 }
 local flashShader
 do
     local ok, wrapper = pcall(shaderUtils.ShaderWrapper.new, shaderUtils.ShaderWrapper,
-        "cc_flash", { uStrength = 0 })
+        "cj_flash", { uStrength = 0 })
     if ok then
         flashShader = wrapper
     else
@@ -305,7 +305,7 @@ end
 
 -- Hits ----------------------------------------------------------------------
 
-local sparkDir = "meshes/MaxYari/cinematic combat/sparks/"
+local sparkDir = "meshes/MaxYari/combat juice/sparks/"
 
 -- Variant 1 of each family keeps the name Impact Effects plays; the rest are
 -- ours. A burst is picked out of the list every time one is thrown.
@@ -573,7 +573,7 @@ local function onLoad()
     if flashShader then flashShader.u.uStrength = 0 end
 end
 
-gutils.print("Cinematic Combat " .. VERSION .. " loaded", 1)
+gutils.print("Combat Juice " .. VERSION .. " loaded", 1)
 
 return {
     engineHandlers = {
@@ -587,7 +587,7 @@ return {
         [DEFS.e.ActorKilled] = onActorKilled,
         OMWMusicCombatTargetsChanged = onCombatTargetsChanged,
     },
-    interfaceName = "CinematicCombat",
+    interfaceName = "CombatJuice",
     interface = {
         version = 1.1,
         shaders = shaderUtils.instances,

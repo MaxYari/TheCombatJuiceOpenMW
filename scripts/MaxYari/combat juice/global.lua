@@ -1,9 +1,9 @@
--- Global half of Cinematic Combat. Owns the simulation time scale (the kill slow
+-- Global half of Combat Juice. Owns the simulation time scale (the kill slow
 -- motion) and the pools of lights used for the impact flashes. The player script
 -- decides *when* things happen, this one carries them out, because only global
 -- scripts can change the time scale or create objects.
 
-local mp = "scripts/MaxYari/cinematic combat/"
+local mp = "scripts/MaxYari/combat juice/"
 
 local world = require("openmw.world")
 local core = require("openmw.core")
@@ -91,7 +91,7 @@ local function lightSet(radius, r, g, b, negative)
     local ok, record = pcall(function()
         return world.createRecord(types.Light.createRecordDraft {
             name = "",
-            model = "meshes\\MaxYari\\cinematic combat\\lightsource.nif",
+            model = "meshes\\MaxYari\\combat juice\\lightsource.nif",
             icon = "",
             weight = 0,
             value = 0,
