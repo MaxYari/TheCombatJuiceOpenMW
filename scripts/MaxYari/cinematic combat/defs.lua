@@ -26,6 +26,17 @@ return {
     TRIGGER_RANK = TRIGGER_RANK,
     TRIGGER_ITEMS = { TRIGGER.Never, TRIGGER.EveryKill, TRIGGER.EncounterEnd, TRIGGER.LongEncounterEnd },
 
+    -- Which slow motion the kill flash rides along with. It borrows that slow
+    -- motion's duration too, so there is nothing to keep in step by hand.
+    FLASH_ON = {
+        Never = "Never",
+        Short = "Short slow motion",
+        Long = "Long slow motion",
+        Both = "Both slow motions",
+    },
+
+    FLASH_ON_ITEMS = { "Never", "Short slow motion", "Long slow motion", "Both slow motions" },
+
     -- Events. Actor -> player, player -> global.
     e = {
         AttackLanded = prefix .. "AttackLanded", -- victim actor -> attacking player

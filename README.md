@@ -47,8 +47,13 @@ overwriting each other.
 
 ### Kill flash
 
-The image smears out from the middle of the screen, contrast snaps up, the
-highlights bloom cold, and the whole frame turns from warm to blue for a moment.
+The image smears out from the middle of the screen, the highlights bloom cold,
+and the light in the room turns blue for a moment.
+
+**It rides one of the slow motions** - the short one, the long one, or either -
+and runs for exactly as long as that slow motion does, so the two always start
+and end together and there is no second duration to keep in step. A kill with no
+slow motion gets no flash.
 
 Its bones come from the death imagespace in the Skyrim mod
 [Sanguine Symphony](https://www.nexusmods.com/skyrimspecialedition/mods/148388),
@@ -71,7 +76,9 @@ recorder's own setup on top of the mod, not something the mod does. The mod page
 agrees - it lists no ENB requirement and says everything is done in-engine.
 
 The look is still the thing worth having, so the colour here is tuned to those
-frames rather than to the plugin. **Colour has to be brought in, not scaled up.** A cold tint over the bloom does
+frames rather than to the plugin.
+
+**Colour has to be brought in, not scaled up.** A cold tint over the bloom does
 nothing in a torchlit room: multiplying warm light by a blue tint only takes red
 out of it, because there is no blue in it to raise. So the bloom is *repainted* -
 reduced to its own brightness and given the tint's colour.
@@ -155,26 +162,30 @@ and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
 scenery gets the spark light but never the warm one.
 
-The warm one waits for the hit to be confirmed. Impact Effects casts its ray on
-the swing's `min hit` key, before the engine has ruled on the attack, so it
-reports a material whether the blow lands or misses; the light on flesh holds
-until the victim says the hit was real, an update or two later. Sparks are left
-alone - a blade skating off a pauldron rings either way, and the cold light
-belongs with the sparks that are already flying.
+**Where the blow landed** is worked out here rather than taken from anyone else,
+because neither available answer is good enough. The engine's hit position is
+`getHitContact`'s output - the victim's origin, their feet, raised by a *random*
+20% to 100% of their height - so a light placed there lands on the floor as
+often as on the wound. Impact Effects casts a ray from the camera through the
+middle of the screen, which is right only while you are looking straight at what
+you are hitting; swing at someone off to the side and the ray goes past them.
 
-Every one of them is placed at the contact point Impact Effects raycast, and
-nowhere else. The engine's own hit position is no use for this: `getHitContact`
-takes the victim's origin - their feet - and raises it by a *random* 20% to 100%
-of their height, so a light placed there lands on the floor as often as on the
-wound.
+So: look down the camera first, since that is where the player's attention is,
+and if that ray does not land on the victim, cast one straight at them, level at
+chest height - from the race's own height for an NPC, and from the engine's
+position for anything else. An enemy hitting *you* skips the camera step, having
+none, and takes the ray between the two of you.
 
-That means Impact Effects has to report every hit, and as shipped it does not:
-it throws the raycast away before calling any handler whenever it cannot name a
-material, which includes any bare body part. **A one-line change fixes it**, and
-[docs/impact-effects-unarmored.md](docs/impact-effects-unarmored.md) is a memo
-to send its author. It is applied to the local install, with the original kept
-alongside - re-apply it after updating that mod, or hits on unarmoured enemies
-stop lighting up.
+Sparks are the exception: they light on Impact Effects' own ray, because that is
+where the sparks themselves are, and the warm light stays out of the way for a
+moment afterwards.
+
+Impact Effects also has to report bare body parts for its spark hook to be worth
+anything, and as shipped it does not - it throws the raycast away before calling
+any handler whenever it cannot name a material. **A one-line change fixes it**,
+and [docs/impact-effects-unarmored.md](docs/impact-effects-unarmored.md) is a
+memo to send its author. It is applied to the local install with the original
+kept alongside; re-apply it after updating that mod.
 
 NIF lights are not loaded by OpenMW, so these are real light records spawned by
 the mod, from a pool of three objects per colour that are parked disabled and

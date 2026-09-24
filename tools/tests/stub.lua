@@ -19,6 +19,14 @@ M.subscribers = {}
 
 -- Storage sections notify their subscribers on a write, the way the engine's do:
 -- that is how the mod's settings cache learns a setting changed.
+local function vec3(x, y, z)
+    local v = { x = x, y = y, z = z }
+    setmetatable(v, { __add = function(a, b) return vec3(a.x + b.x, a.y + b.y, a.z + b.z) end,
+                      __sub = function(a, b) return vec3(a.x - b.x, a.y - b.y, a.z - b.z) end,
+                      __mul = function(a, k) return vec3(a.x * k, a.y * k, a.z * k) end })
+    return v
+end
+
 local function makeSection(tbl, name)
     tbl[name] = tbl[name] or {}
     M.subscribers[name] = M.subscribers[name] or {}
@@ -50,7 +58,8 @@ function M.newObject(kind, opts)
         recordId = opts.recordId or "test_actor",
         kind = kind,
         cell = opts.cell or { name = "TestCell" },
-        position = opts.position or { x = 0, y = 0, z = 0 },
+        position = opts.position or vec3(0, 0, 0),
+        scale = opts.scale or 1,
         dead = false,
         enabled = true,
         valid = true,
@@ -67,6 +76,8 @@ end
 local player = M.newObject("player", { id = "player" })
 M.player = player
 
+M.vec3 = vec3
+
 local packages = {}
 M.packages = packages
 
@@ -81,12 +92,13 @@ packages["openmw.core"] = {
     sound = { playSoundFile3d = function() end, isEnabled = function() return true end },
 }
 packages["openmw.util"] = {
+    vector2 = function(x, y) return { x = x, y = y } end,
     color = {
         rgb = function(r, g, b) return { r = r, g = g, b = b } end,
         hex = function() return { r = 1, g = 1, b = 1 } end,
     },
     clamp = function(v, a, b) return math.max(a, math.min(b, v)) end,
-    vector3 = function(x, y, z) return { x = x, y = y, z = z } end,
+    vector3 = vec3,
 }
 packages["openmw.storage"] = {
     playerSection = function(name) return makeSection(M.settingsStore, name) end,
@@ -99,6 +111,11 @@ end })
 packages["openmw.ui"] = { showMessage = function(m) note("ui.showMessage: %s", m) end,
     isHudVisible = function() return true end }
 packages["openmw.camera"] = {
+    getPosition = function() return vec3(0, -100, 100) end,
+    viewportToWorldVector = function() return vec3(0, 1, 0) end,
+    getThirdPersonDistance = function() return 0 end,
+    MODE = { FirstPerson = 0, ThirdPerson = 1 },
+    getMode = function() return 1 end,
     getExtraPitch = function() return M.cameraExtras.pitch end,
     getExtraYaw = function() return M.cameraExtras.yaw end,
     getExtraRoll = function() return M.cameraExtras.roll end,
@@ -123,7 +140,11 @@ packages["openmw.types"] = {
         getStance = function() return 0 end,
         STANCE = { Nothing = 0 },
     },
-    NPC = { objectIsInstance = function(o) return o ~= nil and o.kind == "npc" end },
+    NPC = {
+        objectIsInstance = function(o) return o ~= nil and o.kind == "npc" end,
+        record = function(o) return { race = "dark elf", isMale = true } end,
+        races = { record = function() return { height = { male = 1.0, female = 0.95 } } end },
+    },
     Creature = { objectIsInstance = function(o) return o ~= nil and o.kind == "creature" end },
     Light = {
         createRecordDraft = function(t) return t end,
@@ -135,7 +156,16 @@ packages["openmw.world"] = {
     createRecord = function(draft) draft.id = "cc_light_1"; return draft end,
     createObject = function(recordId) return M.newObject("light", { id = "light" .. objectCounter }) end,
 }
-packages["openmw.nearby"] = { players = { player }, actors = {} }
+M.rayResult = { hit = false }
+packages["openmw.nearby"] = {
+    players = { player },
+    actors = {},
+    castRay = function(from, to, opts)
+        M.lastRay = { from = from, to = to, options = opts }
+        return M.rayResult
+    end,
+    COLLISION_TYPE = { World = 1, Door = 2, Actor = 4, HeightMap = 8, Default = 15 },
+}
 packages["openmw.vfs"] = { pathsWithPrefix = function() return function() return nil end end,
     fileExists = function() return true end }
 M.shaderEnables, M.shaderDisables = 0, 0

@@ -9,6 +9,8 @@ local mp = "scripts/MaxYari/cinematic combat/"
 local omwself = require("openmw.self")
 local core = require("openmw.core")
 local camera = require("openmw.camera")
+local nearby = require("openmw.nearby")
+local util = require("openmw.util")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
 local I = require("openmw.interfaces")
@@ -204,16 +206,14 @@ local flash = nil -- { startedAt, duration, strength }
 -- it is 0. It is only taken out when the flash is switched off entirely.
 local function updateFlashShaderEnabled()
     if not flashShader then return end
-    local wanted = flashSettings.FlashTrigger ~= DEFS.TRIGGER.Never
+    local wanted = flashSettings.FlashOn ~= DEFS.FLASH_ON.Never
     if wanted ~= flashShader.enabled then
         if wanted then flashShader:enable() else flashShader:disable() end
     end
 end
 
-local function startFlash()
-    if not flashShader then return end
-    local duration = flashSettings.FlashDuration or 0
-    if duration <= 0 then return end
+local function startFlash(duration)
+    if not flashShader or not duration or duration <= 0 then return end
     flash = { startedAt = now(), duration = duration, strength = flashSettings.FlashStrength or 1 }
 end
 
@@ -263,33 +263,41 @@ end
 local function onActorKilled(data)
     local kill = classifyKill(data.victim)
 
-    if slowdownSettings.SlowdownEnabled then
-        -- Both can qualify for the same kill. Work out which ones do, then take
-        -- the longer of them.
-        local best = nil
-        local candidates = {
-            {
-                trigger = slowdownSettings.SmallSlowdownTrigger,
-                chance = slowdownSettings.SmallSlowdownChance,
-                scale = slowdownSettings.SmallSlowdownScale or 0.45,
-                duration = slowdownSettings.SmallSlowdownDuration or 0.22,
-            },
-            {
-                trigger = slowdownSettings.BigSlowdownTrigger,
-                chance = slowdownSettings.BigSlowdownChance,
-                scale = slowdownSettings.BigSlowdownScale or 0.2,
-                duration = slowdownSettings.BigSlowdownDuration or 0.45,
-            },
-        }
-        for _, c in ipairs(candidates) do
-            if qualifies(kill, c.trigger) and math.random() < (c.chance or 0) then
-                if not best or c.duration > best.duration then best = c end
-            end
-        end
-        if best then requestSlowdown(best.scale, best.duration) end
-    end
+    if not slowdownSettings.SlowdownEnabled then return end
 
-    if qualifies(kill, flashSettings.FlashTrigger) then startFlash() end
+    -- Both can qualify for the same kill. Work out which ones do, then take the
+    -- longer of them.
+    local best = nil
+    local candidates = {
+        {
+            kind = DEFS.FLASH_ON.Short,
+            trigger = slowdownSettings.SmallSlowdownTrigger,
+            chance = slowdownSettings.SmallSlowdownChance,
+            scale = slowdownSettings.SmallSlowdownScale or 0.45,
+            duration = slowdownSettings.SmallSlowdownDuration or 0.45,
+        },
+        {
+            kind = DEFS.FLASH_ON.Long,
+            trigger = slowdownSettings.BigSlowdownTrigger,
+            chance = slowdownSettings.BigSlowdownChance,
+            scale = slowdownSettings.BigSlowdownScale or 0.2,
+            duration = slowdownSettings.BigSlowdownDuration or 1.5,
+        },
+    }
+    for _, c in ipairs(candidates) do
+        if qualifies(kill, c.trigger) and math.random() < (c.chance or 0) then
+            if not best or c.duration > best.duration then best = c end
+        end
+    end
+    if not best then return end
+
+    requestSlowdown(best.scale, best.duration)
+
+    -- The flash rides along with one of them, for exactly as long as it lasts.
+    local flashOn = flashSettings.FlashOn
+    if flashOn == DEFS.FLASH_ON.Both or flashOn == best.kind then
+        startFlash(best.duration)
+    end
 end
 
 -- Hits ----------------------------------------------------------------------
@@ -363,34 +371,93 @@ local function hitLight(pos)
         effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
 end
 
--- Impact Effects casts its ray on the swing's "min hit" key, before the engine
--- has decided anything, so it reports a material for a swing that misses just
--- as it does for one that lands. Sparks are fine with that - a blade skating
--- off a pauldron rings either way - but a light on flesh should only appear
--- when the blow actually connected. So the warm light waits here for the victim
--- to say whether it did, which is an update or two behind the ray.
-local pendingHitLight = nil
-local PENDING_HIT_WINDOW = 0.35
+-- Where a blow landed --------------------------------------------------------
+--
+-- Impact Effects answers this by casting a ray from the camera through the
+-- middle of the screen, so it is only right when you are looking straight at
+-- what you hit; swing at someone off to the side and its ray goes past them.
+-- The engine's own hit position is no better - it is the victim's origin raised
+-- by a random fraction of their height, which is how a light ended up at their
+-- feet. So work it out here instead.
 
--- Sent by the actor we hit, from its own I.Combat hit handler. Where the blow
--- landed is Impact Effects' business: the engine's own hit position is the
--- victim's feet plus a random fraction of their height, not a contact point.
+local AIM_REACH = 320
+local SPARK_WINDOW = 0.35
+
+local lastSparkAt = -1000
+
+-- Chest height on the victim: from the race's own height for an NPC, and from
+-- the engine's hit position for anything else, since that at least lies
+-- somewhere on the body.
+local function chestHeight(victim, enginePos)
+    local ok, record = pcall(types.NPC.record, victim)
+    if ok and record then
+        local raceOk, race = pcall(types.NPC.races.record, record.race)
+        if raceOk and race and race.height then
+            local height = race.height[record.isMale and "male" or "female"] * 128 * victim.scale
+            return victim.position.z + height * 0.62
+        end
+    end
+    if enginePos then return enginePos.z end
+    return victim.position.z + 50
+end
+
+-- A ray from the attacker to the victim, level at that height.
+local function rayAtVictim(attacker, victim, height)
+    local from = util.vector3(attacker.position.x, attacker.position.y, height)
+    local to = util.vector3(victim.position.x, victim.position.y, height)
+    local ok, res = pcall(nearby.castRay, from, to, { ignore = attacker })
+    if ok and res.hit and res.hitObject == victim then return res.hitPos end
+    -- Hit nothing, or something else: put it just short of them rather than
+    -- inside them.
+    return from + (to - from) * 0.85
+end
+
+-- Down the camera, through the middle of the screen. Only the player has one,
+-- and it is where their attention is, so it wins when it lands on the victim.
+local function rayFromCamera(victim)
+    local from = camera.getPosition()
+    local dir = camera.viewportToWorldVector(util.vector2(0.5, 0.5))
+    local reach = AIM_REACH + camera.getThirdPersonDistance()
+    local ok, res = pcall(nearby.castRay, from, from + dir * reach, { ignore = selfObject })
+    if ok and res.hit and res.hitObject == victim then return res.hitPos end
+    return nil
+end
+
+local function impactPoint(attacker, victim, enginePos)
+    if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
+        return enginePos
+    end
+    if attacker == selfObject then
+        local aimed = rayFromCamera(victim)
+        if aimed then return aimed end
+    end
+    return rayAtVictim(attacker, victim, chestHeight(victim, enginePos))
+end
+
+-- Sparks light their own impact, so the warm one stays out of the way of a hit
+-- that has just thrown some.
+local function sparkedRecently()
+    return now() - lastSparkAt < SPARK_WINDOW
+end
+
+-- Sent by the actor we hit, from its own I.Combat hit handler.
 local function onAttackLanded(data)
-    local pending = pendingHitLight
-    pendingHitLight = nil
-
     if not data.successful then return end
     startShake(1)
-    if pending and now() - pending.at < PENDING_HIT_WINDOW then
-        hitLight(pending.pos)
+    if not sparkedRecently() then
+        hitLight(impactPoint(selfObject, data.victim, data.hitPos))
     end
 end
 
--- Somebody landed a hit on us.
+-- Somebody landed a hit on us. The attacker has no camera to aim down, so their
+-- point comes from the ray between the two of us.
 I.Combat.addOnHitHandler(function(attack)
     if not attack.successful then return end
     local factor = cameraSettings.ShakeTakenHitFactor or 0
     if factor > 0 then startShake(factor) end
+    if not sparkedRecently() then
+        hitLight(impactPoint(attack.attacker, selfObject, attack.hitPos))
+    end
 end)
 
 -- Impact Effects hooks ------------------------------------------------------
@@ -417,12 +484,8 @@ local function onImpact(o, var)
     if material == "Unarmored" then var.noSound = true end
 
     if sparks or mediumArmour then
+        lastSparkAt = now()
         sparkLight(pos)
-    elseif isActor then
-        -- Flesh, cloth, light armour: the weaker, warmer flash, held back until
-        -- the hit is confirmed. Struck scenery gets nothing, it is only enemies
-        -- that should light up.
-        pendingHitLight = { pos = pos, at = now() }
     end
 
     if sparks and variety then

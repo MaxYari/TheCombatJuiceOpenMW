@@ -80,8 +80,8 @@ local cam = stub.settingsStore["SettingsCinematicCombatCamera"]
 check(cam.ShakeStrength == 1.0 and cam.ShakeDuration == 0.3 and cam.ShakeFrequency == 38,
       "camera shake defaults match the tuned in-game settings")
 check(cam.ShakeTakenHitFactor == 0, "and taking a hit does not shake by default")
-check(stub.settingsStore["SettingsCinematicCombatFlash"].FlashTrigger == "Every kill",
-      "the kill flash defaults to every kill")
+check(stub.settingsStore["SettingsCinematicCombatFlash"].FlashOn == "Short slow motion",
+      "the kill flash rides the short slow motion by default")
 
 local function frame(dt)
     stub.realTime = stub.realTime + (dt or 0.016)
@@ -173,10 +173,10 @@ end
 check(stub.shaderEnables == 0 and stub.shaderDisables == 0,
       "five kills do not touch the post processing chain")
 
-setting("Flash", "FlashTrigger", "Never")
+setting("Flash", "FlashOn", "Never")
 frame()
 check(stub.shaderDisables == 1, "turning the flash off takes the shader out of the chain")
-setting("Flash", "FlashTrigger", "Every kill")
+setting("Flash", "FlashOn", "Short slow motion")
 frame()
 check(stub.shaderEnables == 1, "and turning it back on puts it in, once")
 
@@ -185,80 +185,89 @@ stub.shaderUniform = nil
 player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
 player.engineHandlers.onFrame()
 check(stub.shaderUniform == nil, "set to long fights only, a plain kill does not fire it")
-setting("Flash", "FlashTrigger", "Every kill")
+setting("Flash", "FlashOn", "Short slow motion")
 
 print("\n== camera shake and impact lights ==")
-local victim = stub.newObject("npc", { id = "unarmoured" })
-local enginePos = { x = 0, y = 0, z = 5 }
+local victim = stub.newObject("npc", { id = "unarmoured", position = stub.vec3(0, 100, 0) })
+local enginePos = stub.vec3(0, 0, 5)      -- the engine's guess, down by the feet
+local aimPos = stub.vec3(1, 90, 80)       -- where our camera ray lands on them
+local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
 
+-- Looking right at them: the camera ray wins, because that is where the
+-- player's attention is.
+stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 stub.sentGlobalEvents = {}
 player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
 check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
-check(#sentLights() == 0,
-      "and nothing else: the hit event has no usable position, so it lights nothing")
-
--- Impact Effects hands over the material and the raycast's contact point, but it
--- casts that ray on the swing, before the engine has ruled on it.
-local hitPos = { x = 10, y = 20, z = 30 }
-stub.sentGlobalEvents = {}
-stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Dmg", hitPos = hitPos })
-check(#sentLights() == 0, "a swing that reaches flesh does not light it yet")
-
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 local lights = sentLights()
-check(#lights == 1 and lights[1].r > lights[1].b,
-      "the warm light follows once the victim confirms the hit")
-check(lights[1] and lights[1].pos == hitPos, "and lands where Impact Effects raycast, not where the engine guessed")
+check(#lights == 1 and lights[1].pos == aimPos, "and lights it where the camera was pointed")
+check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
 
--- A swing that misses reports a material all the same, and must light nothing.
-stub.sentGlobalEvents = {}
-stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Dmg", hitPos = hitPos })
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
-check(#sentLights() == 0, "a miss on flesh lights nothing")
-
--- ...and a miss must not leave the light waiting for the next hit either.
+-- Swinging at someone off to the side: the camera ray misses them, so the point
+-- comes from a ray straight at them instead. This is the case Impact Effects
+-- cannot answer at all.
+local calls = 0
+stub.packages["openmw.nearby"].castRay = function(from, to, opts)
+    calls = calls + 1
+    stub.lastRay = { from = from, to = to }
+    if calls == 1 then return { hit = true, hitObject = stub.newObject("static") } end
+    return { hit = true, hitObject = victim, hitPos = sidePos }
+end
 stub.sentGlobalEvents = {}
 player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-check(#sentLights() == 0, "and does not carry over to the next successful hit")
+lights = sentLights()
+check(#lights == 1 and lights[1].pos == sidePos,
+      "a hit away from the crosshair is lit from a ray straight at the victim")
+check(stub.lastRay and math.abs(stub.lastRay.from.z - stub.lastRay.to.z) < 1e-9,
+      "and that ray is level, at chest height rather than at their feet")
+check(stub.lastRay and stub.lastRay.from.z > victim.position.z + 40,
+      "which is well above the ground")
 
+-- Being hit: the attacker has no camera, so only the straight ray is used.
+calls = 1
+stub.sentGlobalEvents = {}
+stub.hitHandlers[1]({ attacker = victim, successful = true, hitPos = enginePos })
+check(#sentLights() == 1, "an enemy landing a hit on us lights that too")
+
+stub.packages["openmw.nearby"].castRay = function(from, to, opts)
+    stub.lastRay = { from = from, to = to }
+    return stub.rayResult
+end
+stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
+
+stub.sentGlobalEvents = {}
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
+check(#sentLights() == 0, "a miss lights nothing")
+
+-- Sparks light their own impact, so the warm one keeps out of the way.
+local hitPos = stub.vec3(10, 20, 30)
 stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
 lights = sentLights()
-check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold instead")
+check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold")
+player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+check(#sentLights() == 1, "and the warm light does not pile on top of it")
 
--- A bare body part reaches us only because of the one-line patch in Impact
--- Effects (docs/impact-effects-unarmored.md); it reports "Unarmored".
-stub.sentGlobalEvents = {}
+-- A bare body part reaches the hook only because of the one-line patch in
+-- Impact Effects (docs/impact-effects-unarmored.md), and must stay silent.
 local bare = { material = "Unarmored", hitPos = hitPos }
 stub.impactActorHandlers[1](stub.newObject("npc"), bare)
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-lights = sentLights()
-check(#lights == 1 and lights[1].r > lights[1].b, "an unarmoured hit gets the warm light")
-check(bare.noSound, "and is kept silent, since that material has no sound of its own")
+check(bare.noSound, "an unarmoured hit is kept silent, that material has no sound of its own")
 
-stub.sentGlobalEvents = {}
-stub.impactActorHandlers[1](stub.newObject("npc"), { material = "Unarmored", hitPos = hitPos })
-player.eventHandlers.CC_AttackLanded({ victim = victim, successful = false })
-check(#sentLights() == 0, "a miss on an unarmoured enemy lights nothing")
-
--- Striking the world goes through the object handler, which is the one that
--- was missing: metal scenery sparked but never lit up.
+-- Striking the world still goes through the object handler.
 check(#stub.impactObjectHandlers == 1, "the object handler is registered")
+stub.realTime = stub.realTime + 1
 stub.sentGlobalEvents = {}
 stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Metal", hitPos = hitPos })
 lights = sentLights()
-check(#lights == 1 and lights[1].b > lights[1].r, "hitting metal scenery lights it too")
+check(#lights == 1 and lights[1].b > lights[1].r, "hitting metal scenery lights it cold")
 
 stub.sentGlobalEvents = {}
 stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Wood", hitPos = hitPos })
 check(#sentLights() == 0, "but hitting a crate lights nothing")
-
-stub.sentGlobalEvents = {}
-player.eventHandlers.CC_AttackLanded({ victim = stub.newObject("npc"), successful = false })
-check(#sentLights() == 0, "a miss lights nothing")
 
 print("\n== spark variety ==")
 local function sentVfx()

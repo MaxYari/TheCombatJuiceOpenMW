@@ -21,15 +21,19 @@ end
 
 -- When does an effect play? Every trigger this mod has offers the same choices,
 -- and a kill can satisfy several of them at once (see defs.TRIGGERS).
-local function trigger(key, name, default, description)
+local function select(key, name, default, items, description)
     return {
         key = key,
         renderer = "select",
         default = default,
-        argument = { l10n = 'CinematicCombat', items = DEFS.TRIGGER_ITEMS },
+        argument = { l10n = 'CinematicCombat', items = items },
         name = name,
         description = description,
     }
+end
+
+local function trigger(key, name, default, description)
+    return select(key, name, default, DEFS.TRIGGER_ITEMS, description)
 end
 
 I.Settings.registerPage {
@@ -109,16 +113,14 @@ I.Settings.registerGroup {
     order = 3,
     permanentStorage = true,
     settings = {
-        trigger('FlashTrigger', 'Kill Flash On', DEFS.TRIGGER.EveryKill,
-            "A flash on the kill, ported from the death imagespace in the Skyrim mod Sanguine " ..
-            "Symphony: the image smears out from the middle, contrast snaps up, highlights " ..
-            "bloom, and the colour drains for a moment with a touch of red in it. " ..
-            "Every part of it can be tuned live in the post processing HUD (F2 by default)."),
+        select('FlashOn', 'Kill Flash On', DEFS.FLASH_ON.Short, DEFS.FLASH_ON_ITEMS,
+            "Which slow motion the flash rides along with. It runs for exactly as long as that " ..
+            "slow motion does, so the two always end together and there is no separate duration " ..
+            "to keep in step.\n\nThe image smears out from the middle of the screen, the " ..
+            "highlights bloom cold and the light in the room turns blue for a moment. Every part " ..
+            "of it can be tuned live in the post processing HUD (F2 by default)."),
         number('FlashStrength', 'Kill Flash Strength', 1.0, 0, nil,
             "Multiplies the whole effect."),
-        number('FlashDuration', 'Kill Flash Duration', 0.5, 0.1, nil,
-            "Seconds of real time for the whole flash. Sanguine Symphony's death imagespace, " ..
-            "which this is ported from, runs for 0.5 and peaks a twentieth of a second in."),
     },
 }
 
@@ -148,14 +150,14 @@ I.Settings.registerGroup {
         checkbox('HitLightEnabled', 'Light Flash On Other Hits', true,
             "A weaker, warmer version of the same flash for hits that throw no sparks - flesh, " ..
             "cloth, light armour. Meant to be barely noticed."),
-        number('HitLightRadius', 'Other Hit Light Radius', 90, 20, nil,
+        number('HitLightRadius', 'Other Hit Light Radius', 30, 5, nil,
             "Radius of that light in game units."),
         number('HitLightDuration', 'Other Hit Light Duration', 0.06, 0.01, nil,
             "Seconds of real time the light stays on."),
         {
             key = 'HitLightColor',
             renderer = 'color',
-            default = util.color.rgb(1.0, 0.86, 0.6),
+            default = util.color.rgb(1.0, 0.78, 0.45),
             name = 'Other Hit Light Colour',
             description = "Changing this makes a new light record the first time it is used.",
         },
