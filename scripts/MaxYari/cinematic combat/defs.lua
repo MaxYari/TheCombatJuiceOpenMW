@@ -40,6 +40,7 @@ return {
     -- Events. Actor -> player, player -> global.
     e = {
         AttackLanded = prefix .. "AttackLanded", -- victim actor -> attacking player
+        DamageDealt = prefix .. "DamageDealt",   -- victim actor -> attacking player, with how hard
         ActorKilled = prefix .. "ActorKilled",   -- victim actor -> the player who killed it
         Slowdown = prefix .. "Slowdown",         -- player -> global, asks for a time scale dip
         SpawnLight = prefix .. "SpawnLight",     -- player -> global, asks for a light flash

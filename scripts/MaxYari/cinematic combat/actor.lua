@@ -43,15 +43,28 @@ end)
 -- Health decreases come from MSS, which reads health once per frame for every
 -- listener instead of once per mod, and hands over the hit that caused them.
 local function onHealthDecrease(e)
-    if e.health > 0 then return end
     local damage = math.min(e.previousHealth, e.baseHealth) - e.health
     if damage <= 0 then return end
+
+    local attacker = e.hit and e.hit.attacker
+    local byPlayer = attacker ~= nil and types.Player.objectIsInstance(attacker)
+
+    -- How hard the blow was, as a share of this actor's whole health. Taken
+    -- from the health that was actually lost rather than from the attack's own
+    -- damage figure, which is read before armour and difficulty are applied to
+    -- it: our hit handler runs ahead of the one that does that.
+    if byPlayer and e.baseHealth and e.baseHealth > 0 then
+        attacker:sendEvent(DEFS.e.DamageDealt, {
+            victim = selfObject,
+            fraction = damage / e.baseHealth,
+        })
+    end
+
+    if e.health > 0 then return end
 
     -- Only tell the player about kills that are theirs: either the killing blow
     -- was theirs, or this actor was fighting them and something of theirs (a
     -- spell, a summon) finished the job a moment later.
-    local attacker = e.hit and e.hit.attacker
-    local byPlayer = attacker ~= nil and types.Player.objectIsInstance(attacker)
     if not byPlayer and not (core.getRealTime() - lastHitByPlayer < 1.0 and playerIsFighting()) then
         return
     end

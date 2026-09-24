@@ -198,6 +198,7 @@ local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
 stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 stub.sentGlobalEvents = {}
 player.eventHandlers.CC_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+player.eventHandlers.CC_DamageDealt({ victim = victim, fraction = 0.25 })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
@@ -272,6 +273,38 @@ check(#lights == 1 and lights[1].b > lights[1].r, "hitting metal scenery lights 
 stub.sentGlobalEvents = {}
 stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Wood", hitPos = hitPos })
 check(#sentLights() == 0, "but hitting a crate lights nothing")
+
+print("\n== shake scaled by how hard the blow landed ==")
+-- The camera's wobble is random frame to frame, but how long it wobbles for is
+-- not, and the same multiplier drives both. So measure the length.
+local function shakeFrames(fraction)
+    player.eventHandlers.CC_DamageDealt({ victim = victim, fraction = fraction })
+    local frames = 0
+    for _ = 1, 500 do
+        stub.realTime = stub.realTime + 0.005
+        stub.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
+        player.engineHandlers.onFrame()
+        local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
+            + math.abs(stub.cameraExtras.roll)
+        if moved == 0 then break end
+        frames = frames + 1
+    end
+    return frames
+end
+
+local scratch = shakeFrames(0.05)   -- a tenth of their health or less: half
+local solid = shakeFrames(0.25)     -- a quarter: exactly what the settings say
+local heavy = shakeFrames(0.50)     -- two fifths or more: half again
+check(scratch > 0 and heavy > solid and solid > scratch,
+      "a harder blow shakes for longer, and a scratch for less")
+check(math.abs(heavy / scratch - 3) < 0.25,
+      string.format("across the stated half to half again, a threefold range (%.2fx)", heavy / scratch))
+check(math.abs(solid / scratch - 2) < 0.25,
+      "with a quarter of their health landing on the settings' own figure")
+
+setting("Camera", "ShakeScalesWithDamage", false)
+check(shakeFrames(0.05) == shakeFrames(0.50), "with the setting off, every blow shakes the same")
+setting("Camera", "ShakeScalesWithDamage", true)
 
 print("\n== spark variety ==")
 local function sentVfx()

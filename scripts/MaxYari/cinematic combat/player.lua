@@ -130,10 +130,10 @@ end
 
 local shake = nil -- { startedAt, duration, strength, seed }
 
-local function startShake(strengthMult)
+local function startShake(strengthMult, durationMult)
     if not cameraSettings.ShakeEnabled then return end
     local strength = (cameraSettings.ShakeStrength or 0) * (strengthMult or 1)
-    local duration = cameraSettings.ShakeDuration or 0
+    local duration = (cameraSettings.ShakeDuration or 0) * (durationMult or 1)
     if strength <= 0 or duration <= 0 then return end
     shake = {
         startedAt = now(),
@@ -456,10 +456,32 @@ local function sparkedRecently()
     return now() - lastSparkAt < SPARK_WINDOW
 end
 
--- Sent by the actor we hit, from its own I.Combat hit handler.
+-- A tap and a haymaker should not shake the same. The share of the victim's
+-- health the blow took scales both how hard the camera moves and how long it
+-- keeps moving, between half and half again what the settings ask for: half at
+-- a tenth of their health or less, full at a quarter, half again at two fifths
+-- or more.
+local DAMAGE_SHAKE_FROM, DAMAGE_SHAKE_TO = 0.10, 0.40
+local DAMAGE_SHAKE_MIN, DAMAGE_SHAKE_MAX = 0.5, 1.5
+
+local function damageShakeScale(fraction)
+    if not cameraSettings.ShakeScalesWithDamage then return 1 end
+    local t = ((fraction or 0) - DAMAGE_SHAKE_FROM) / (DAMAGE_SHAKE_TO - DAMAGE_SHAKE_FROM)
+    t = math.max(0, math.min(1, t))
+    return DAMAGE_SHAKE_MIN + t * (DAMAGE_SHAKE_MAX - DAMAGE_SHAKE_MIN)
+end
+
+-- Sent by the actor we hit once the health has actually come off it.
+local function onDamageDealt(data)
+    local scale = damageShakeScale(data.fraction)
+    startShake(scale, scale)
+end
+
+-- Sent by the actor we hit, from its own I.Combat hit handler. The shake waits
+-- for the damage event, which knows how hard the blow landed; this only has to
+-- light it.
 local function onAttackLanded(data)
     if not data.successful then return end
-    startShake(1)
     if not sparkedRecently() then
         hitLight(impactPoint(selfObject, data.victim, data.hitPos))
     end
@@ -561,6 +583,7 @@ return {
     },
     eventHandlers = {
         [DEFS.e.AttackLanded] = onAttackLanded,
+        [DEFS.e.DamageDealt] = onDamageDealt,
         [DEFS.e.ActorKilled] = onActorKilled,
         OMWMusicCombatTargetsChanged = onCombatTargetsChanged,
     },

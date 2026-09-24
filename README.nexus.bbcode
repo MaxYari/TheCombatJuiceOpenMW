@@ -21,7 +21,7 @@ Knowing which kill ended the fight comes from the engine. OpenMW's combat music 
 
 [size=4][b]Camera shake[/b][/size]
 
-Fires when a hit lands, decaying over a third of a second. Hits you take don't shake the camera unless you turn that up. With [b]Dynamic Camera[/b] installed it goes through that mod's extra angle API, so the two add up instead of overwriting each other.
+Fires when a hit lands, decaying over a third of a second, and [b]scaled by how hard the blow was[/b]: the share of the victim's health it took off moves both the strength and the duration between half and half again what the settings ask for - half at a tenth of their health or less, the settings' own figure at a quarter, half again at two fifths or more. It reads the health that actually came off rather than the attack's damage figure, which is taken before armour and difficulty are applied to it. Hits you take don't shake the camera unless you turn that up. With [b]Dynamic Camera[/b] installed it goes through that mod's extra angle API, so the two add up instead of overwriting each other.
 
 [size=4][b]Kill flash[/b][/size]
 

@@ -40,7 +40,13 @@ music switched off.
 
 ### Camera shake
 
-Fires when a hit lands, decaying over a third of a second. Hits you take don't
+Fires when a hit lands, decaying over a third of a second, and **scaled by how
+hard the blow was**: the share of the victim's health it took off moves both the
+strength and the duration between half and half again what the settings ask for -
+half at a tenth of their health or less, the settings' own figure at a quarter,
+half again at two fifths or more. It reads the health that actually came off
+rather than the attack's damage figure, which is taken before armour and
+difficulty are applied to it. Hits you take don't
 shake the camera unless you turn that up. With **Dynamic Camera** installed it
 goes through that mod's extra angle API, so the two add up instead of
 overwriting each other.

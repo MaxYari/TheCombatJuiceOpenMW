@@ -99,6 +99,11 @@ I.Settings.registerGroup {
             "Seconds of real time the shake decays over."),
         number('ShakeFrequency', 'Shake Frequency', 38, 1, nil,
             "How fast the camera rattles, in wobbles per second."),
+        checkbox('ShakeScalesWithDamage', 'Shake Intensity Scales With Relative Damage Dealt', true,
+            "Scales the shake by the share of the victim's health the blow took off, so a tap " ..
+            "and a killing blow do not land the same. Both the strength and the duration above " ..
+            "run between half and half again: half at a tenth of their health or less, what the " ..
+            "settings say at a quarter, and half again at two fifths or more."),
         number('ShakeTakenHitFactor', 'Strength When You Are Hit', 0, 0, nil,
             "Multiplies the shake when the hit lands on you rather than on your target. " ..
             "0 means your own hits shake the camera and theirs do not."),
