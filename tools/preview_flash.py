@@ -82,11 +82,17 @@ def flash(img, u, s=1.0):
     colorize = u.get("uGlareColorize", 0.0)
     glare = (glare * (1 - colorize) + glare_luma[..., None] * colorize) * u["uGlareTint"]
     color = color + glare * u["uBloom"] * s
-    color = color + u["uGlareTint"] * u.get("uWash", 0.0) * s
 
     luma = color @ LUMA
     color = luma[..., None] + (color - luma[..., None]) * (1.0 + (u["uSaturation"] - 1.0) * s)
-    color = color * (1 - u["uTintAmount"] * s) + u["uTint"] * luma[..., None] * u["uTintAmount"] * s
+
+    # the wash and the tint are held off the shadows
+    lo = u.get("uLitFrom", 0.0)
+    t = np.clip((luma - lo) / 0.45, 0, 1)
+    lit = (t * t * (3 - 2 * t))[..., None]
+    color = color + u["uGlareTint"] * u.get("uWash", 0.0) * s * lit
+    amt = u["uTintAmount"] * s * lit
+    color = color * (1 - amt) + u["uTint"] * luma[..., None] * amt
     return color
 
 if __name__ == "__main__":

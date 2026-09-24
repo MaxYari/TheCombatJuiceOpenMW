@@ -66,8 +66,17 @@ uniform_float uBloomRadius {
     description = "How far the bloom spreads, as a fraction of screen height.";
 }
 
+uniform_float uLitFrom {
+    default = 0.12;
+    min = 0.0;
+    max = 1.0;
+    step = 0.01;
+    display_name = "Lit From";
+    description = "Brightness at which a pixel starts counting as lit. The wash and the tint below only touch what is lit, fading in from here to about half again as bright, so the flash reads as the light in the room turning cold rather than as a colour laid over the screen. Shadows keep their own colour.";
+}
+
 uniform_float uWash {
-    default = 0.08;
+    default = 0.1;
     min = 0.0;
     step = 0.01;
     display_name = "Cold Wash";
@@ -223,11 +232,16 @@ fragment cc_flash(rt1=RT_CCGlare) {
         float glareLuma = dot(glare, CC_LUMA);
         glare = mix(glare, vec3(glareLuma), uGlareColorize) * uGlareTint;
         color += glare * uBloom * s;
-        color += uGlareTint * uWash * s;
 
         float luma = dot(color, CC_LUMA);
         color = mix(vec3(luma), color, mix(1.0, uSaturation, s));
-        color = mix(color, uTint * max(luma, 0.0), uTintAmount * s);
+
+        // Everything below is held off the shadows. Laid over the whole frame it
+        // reads as a colour filter; kept to what is already lit it reads as the
+        // light itself going cold, which is the point.
+        float lit = smoothstep(uLitFrom, uLitFrom + 0.45, luma);
+        color += uGlareTint * uWash * s * lit;
+        color = mix(color, uTint * max(luma, 0.0), uTintAmount * s * lit);
 
         omw_FragColor = vec4(color, scene.a);
     }

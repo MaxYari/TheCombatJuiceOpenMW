@@ -74,10 +74,15 @@ The look is still the thing worth having, so the colour here is tuned to those
 frames rather than to the plugin. **Colour has to be brought in, not scaled up.** A cold tint over the bloom does
 nothing in a torchlit room: multiplying warm light by a blue tint only takes red
 out of it, because there is no blue in it to raise. So the bloom is *repainted* -
-reduced to its own brightness and given the tint's colour - and a small flat wash
-of that colour goes over everything, which is what carries the flash in a cave
-too dark to have anything worth blooming. On a dark Morrowind cave the defaults
-turn `r 0.121 g 0.109 b 0.096` into `r 0.146 g 0.196 b 0.263`.
+reduced to its own brightness and given the tint's colour.
+
+**And it is held off the shadows.** Laid over the whole frame the same colour
+reads as a filter dropped on the screen; kept to what is already lit it reads as
+the light in the room going cold, which is the thing worth having. The wash and
+the tint fade in from **Lit From** upwards, so on a cave screenshot the shadows
+and midtones come out as they went in and the highlights gain 0.18 of blue over
+red. Dark places therefore flash less by design - if you want more of one, lower
+Lit From or raise Cold Wash.
 
 Contrast is off by default for the same reason the shadow crush was: it turns
 about a pivot, and in a cave most of the screen sits below any sensible pivot,
