@@ -55,9 +55,12 @@ Its bones come from the death imagespace in the Skyrim mod
 read out of that mod's plugin - it ships no shaders, and its only screen effect
 is three imagespace modifiers its SKSE plugin fires on a death. Their recipe is
 `radial blur 0.15`, `contrast x1.3`, `saturation 0`, `tint red at 0.059`, over
-half a second peaking a tenth of the way in. **The zoom blur and the timing are
-taken from it as they stand** - the blur is what reads as impact, and the timing
-is a twentieth of a second to snap on and the rest to let go.
+half a second peaking a tenth of the way in. **The zoom blur is taken from it as
+it stands** - the blur is what reads as impact. The timing is not quite: those
+curves snap to a peak a tenth of the way in and fall straight back, while the
+footage holds its peak - brightness there ramps over a frame or two, sits flat
+for about seven, then takes twenty more to return. Held, the flash is at full
+strength long enough to be seen rather than passed through.
 
 The colour is not, and it cannot be. That mod's flash drains saturation to 0 and
 washes toward white, and **desaturation cannot overshoot neutral** - it moves the

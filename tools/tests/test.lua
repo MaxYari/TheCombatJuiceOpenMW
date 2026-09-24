@@ -83,6 +83,12 @@ check(cam.ShakeTakenHitFactor == 0, "and taking a hit does not shake by default"
 check(stub.settingsStore["SettingsCinematicCombatFlash"].FlashTrigger == "Every kill",
       "the kill flash defaults to every kill")
 
+local function frame(dt)
+    stub.realTime = stub.realTime + (dt or 0.016)
+    stub.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
+    player.engineHandlers.onFrame()
+end
+
 print("\n== a plain kill ==")
 player.engineHandlers.onUpdate(0.016)
 local a = stub.newObject("npc", { id = "bandit_a" })
@@ -157,6 +163,23 @@ stub.realTime = stub.realTime + 2
 player.engineHandlers.onFrame()
 check(stub.shaderUniform == 0, "and fades out")
 
+-- Enabling a shader makes the engine rebuild the whole post processing chain,
+-- so it must not happen per kill: that is a hitch exactly on the kill.
+stub.shaderEnables, stub.shaderDisables = 0, 0
+for _ = 1, 5 do
+    player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
+    for _ = 1, 40 do frame(0.03) end
+end
+check(stub.shaderEnables == 0 and stub.shaderDisables == 0,
+      "five kills do not touch the post processing chain")
+
+setting("Flash", "FlashTrigger", "Never")
+frame()
+check(stub.shaderDisables == 1, "turning the flash off takes the shader out of the chain")
+setting("Flash", "FlashTrigger", "Every kill")
+frame()
+check(stub.shaderEnables == 1, "and turning it back on puts it in, once")
+
 setting("Flash", "FlashTrigger", "Long encounter end")
 stub.shaderUniform = nil
 player.eventHandlers.CC_ActorKilled({ victim = stub.newObject("npc") })
@@ -165,12 +188,6 @@ check(stub.shaderUniform == nil, "set to long fights only, a plain kill does not
 setting("Flash", "FlashTrigger", "Every kill")
 
 print("\n== camera shake and impact lights ==")
-local function frame(dt)
-    stub.realTime = stub.realTime + (dt or 0.016)
-    stub.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
-    player.engineHandlers.onFrame()
-end
-
 local victim = stub.newObject("npc", { id = "unarmoured" })
 local enginePos = { x = 0, y = 0, z = 5 }
 

@@ -138,11 +138,13 @@ packages["openmw.world"] = {
 packages["openmw.nearby"] = { players = { player }, actors = {} }
 packages["openmw.vfs"] = { pathsWithPrefix = function() return function() return nil end end,
     fileExists = function() return true end }
+M.shaderEnables, M.shaderDisables = 0, 0
+
 packages["openmw.postprocessing"] = {
     load = function(name)
         return {
-            enable = function() note("shader %s enabled", name) end,
-            disable = function() note("shader %s disabled", name) end,
+            enable = function() M.shaderEnables = M.shaderEnables + 1 end,
+            disable = function() M.shaderDisables = M.shaderDisables + 1 end,
             setFloat = function(_, k, v) M.shaderUniform = v end,
             setVector2 = function() end, setVector3 = function() end, setVector3Array = function() end,
         }

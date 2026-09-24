@@ -196,32 +196,48 @@ end
 
 local flash = nil -- { startedAt, duration, strength }
 
+-- Enabling a shader is not free: it changes the post processing chain, and the
+-- engine then rebuilds every technique in it - state sets, uniforms, textures,
+-- passes, render targets. Doing that on each kill is a hitch at the exact
+-- moment the effect is meant to land. So the shader stays in the chain and is
+-- steered with uStrength, which both of its passes return on immediately when
+-- it is 0. It is only taken out when the flash is switched off entirely.
+local function updateFlashShaderEnabled()
+    if not flashShader then return end
+    local wanted = flashSettings.FlashTrigger ~= DEFS.TRIGGER.Never
+    if wanted ~= flashShader.enabled then
+        if wanted then flashShader:enable() else flashShader:disable() end
+    end
+end
+
 local function startFlash()
     if not flashShader then return end
     local duration = flashSettings.FlashDuration or 0
     if duration <= 0 then return end
     flash = { startedAt = now(), duration = duration, strength = flashSettings.FlashStrength or 1 }
-    flashShader:enable()
 end
 
--- The envelope is Sanguine Symphony's, read off its death imagespace: every
--- curve in that record runs 0 at the start, peak a tenth of the way in, back to
--- 0 at the end, interpolated linearly. Over the default half second that is a
--- twentieth of a second to snap on and the rest to fade.
-local FLASH_PEAK_AT = 0.1
+-- Sanguine Symphony's imagespace curves are linear: up to a peak a tenth of the
+-- way in, straight back down. The footage holds its peak instead - frame
+-- brightness there ramps over a frame or two, sits flat for about seven, and
+-- takes another twenty or so to come back - so the flash is at full strength
+-- long enough to register rather than passing through it.
+local FLASH_RAMP = 0.05
+local FLASH_HOLD_UNTIL = 0.28
 
 local function flashEnvelope(t)
-    if t < FLASH_PEAK_AT then return t / FLASH_PEAK_AT end
-    return (1 - t) / (1 - FLASH_PEAK_AT)
+    if t < FLASH_RAMP then return t / FLASH_RAMP end
+    if t < FLASH_HOLD_UNTIL then return 1 end
+    return (1 - (t - FLASH_HOLD_UNTIL) / (1 - FLASH_HOLD_UNTIL)) ^ 1.6
 end
 
 local function updateFlash()
+    updateFlashShaderEnabled()
     if not flash then return end
     local t = (now() - flash.startedAt) / flash.duration
     if t >= 1 then
         flash = nil
         flashShader.u.uStrength = 0
-        flashShader:disable()
         return
     end
     flashShader.u.uStrength = flash.strength * flashEnvelope(t)
@@ -456,10 +472,7 @@ local function onLoad()
     encounterStartedAt = nil
     shake = nil
     flash = nil
-    if flashShader then
-        flashShader.u.uStrength = 0
-        flashShader:disable()
-    end
+    if flashShader then flashShader.u.uStrength = 0 end
 end
 
 gutils.print("Cinematic Combat " .. VERSION .. " loaded", 1)
