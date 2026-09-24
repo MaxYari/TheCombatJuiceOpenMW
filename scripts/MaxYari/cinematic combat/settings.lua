@@ -139,6 +139,10 @@ I.Settings.registerGroup {
             "Radius of that light in game units."),
         number('SparkLightDuration', 'Spark Light Duration', 0.09, 0.01, nil,
             "Seconds of real time the light stays on."),
+        number('SparkLightPower', 'Spark Light Power', 1.0, 0, nil,
+            "How brightly it lights the room, separately from how far it reaches. A Morrowind " ..
+            "light has no brightness field - what it lights is the magnitude of its colour - so " ..
+            "this scales the colour and leaves the radius alone."),
         {
             key = 'SparkLightColor',
             renderer = 'color',
@@ -149,11 +153,15 @@ I.Settings.registerGroup {
 
         checkbox('HitLightEnabled', 'Light Flash On Other Hits', true,
             "A weaker, warmer version of the same flash for hits that throw no sparks - flesh, " ..
-            "cloth, light armour. Meant to be barely noticed."),
-        number('HitLightRadius', 'Other Hit Light Radius', 30, 5, nil,
+            "cloth, light armour. Meant to be barely noticed. Only on what you hit: being hit " ..
+            "yourself lights nothing, since it would be lighting your own face."),
+        number('HitLightRadius', 'Other Hit Light Radius', 90, 5, nil,
             "Radius of that light in game units."),
         number('HitLightDuration', 'Other Hit Light Duration', 0.06, 0.01, nil,
             "Seconds of real time the light stays on."),
+        number('HitLightPower', 'Other Hit Light Power', 0.33, 0, nil,
+            "How brightly it lights the room, separately from how far it reaches. A third of " ..
+            "full, so it reads as a glint off the blow rather than a lamp being lit."),
         {
             key = 'HitLightColor',
             renderer = 'color',

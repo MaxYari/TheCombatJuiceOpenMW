@@ -344,16 +344,21 @@ local function spawnVfx(model, pos, scale)
     })
 end
 
-local function spawnLight(pos, radius, duration, color, fallback)
+-- A Morrowind light has no brightness of its own: how much it lights the room is
+-- the magnitude of its colour, and the radius is only how far it reaches. So
+-- power scales the colour and leaves the reach alone.
+local function spawnLight(pos, radius, duration, color, fallback, power)
     if not pos then return end
+    power = power or 1
+    if power <= 0 then return end
     core.sendGlobalEvent(DEFS.e.SpawnLight, {
         player = selfObject,
         pos = pos,
         radius = radius,
         duration = duration,
-        r = color and color.r or fallback[1],
-        g = color and color.g or fallback[2],
-        b = color and color.b or fallback[3],
+        r = (color and color.r or fallback[1]) * power,
+        g = (color and color.g or fallback[2]) * power,
+        b = (color and color.b or fallback[3]) * power,
     })
 end
 
@@ -361,14 +366,16 @@ local function sparkLight(pos)
     if not effectSettings.SparkLightEnabled then return end
     spawnLight(pos, effectSettings.SparkLightRadius or 160,
         effectSettings.SparkLightDuration or 0.09,
-        effectSettings.SparkLightColor, { 0.62, 0.78, 1.0 })
+        effectSettings.SparkLightColor, { 0.62, 0.78, 1.0 },
+        effectSettings.SparkLightPower or 1)
 end
 
 local function hitLight(pos)
     if not effectSettings.HitLightEnabled then return end
     spawnLight(pos, effectSettings.HitLightRadius or 90,
         effectSettings.HitLightDuration or 0.06,
-        effectSettings.HitLightColor, { 1.0, 0.86, 0.6 })
+        effectSettings.HitLightColor, { 1.0, 0.78, 0.45 },
+        effectSettings.HitLightPower or 0.33)
 end
 
 -- Where a blow landed --------------------------------------------------------
@@ -449,15 +456,12 @@ local function onAttackLanded(data)
     end
 end
 
--- Somebody landed a hit on us. The attacker has no camera to aim down, so their
--- point comes from the ray between the two of us.
+-- Somebody landed a hit on us. Only the camera reacts: a light on the player
+-- lands in their own face, and there is nothing to look at there.
 I.Combat.addOnHitHandler(function(attack)
     if not attack.successful then return end
     local factor = cameraSettings.ShakeTakenHitFactor or 0
     if factor > 0 then startShake(factor) end
-    if not sparkedRecently() then
-        hitLight(impactPoint(attack.attacker, selfObject, attack.hitPos))
-    end
 end)
 
 -- Impact Effects hooks ------------------------------------------------------

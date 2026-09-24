@@ -160,7 +160,13 @@ and no sparks. **Sparks On Medium Armour** in the settings fills that in.
 **Impact lights:** sparks throw a very short lived light where they appear
 (cold blue, ~0.1s), and hits on an actor that spark off nothing - flesh, cloth,
 light armour - get a weaker, warmer one that is meant to go unnoticed. Struck
-scenery gets the spark light but never the warm one.
+scenery gets the spark light but never the warm one, and being hit yourself
+lights nothing at all: it would be lighting your own face.
+
+A Morrowind light has no brightness field. What it lights is the magnitude of
+its colour, and the radius is only how far it reaches - so **Power** scales the
+colour, leaving the reach alone. The warm one ships at a third, which reads as a
+glint off the blow rather than a lamp being lit next to you.
 
 **Where the blow landed** is worked out here rather than taken from anyone else,
 because neither available answer is good enough. The engine's hit position is

@@ -205,6 +205,10 @@ check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
 local lights = sentLights()
 check(#lights == 1 and lights[1].pos == aimPos, "and lights it where the camera was pointed")
 check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
+-- Power scales the colour, because that is what a Morrowind light's brightness
+-- is; the radius is only its reach.
+check(lights[1] and lights[1].r < 0.5 and lights[1].radius == 90,
+      "dimmed to a third, without shrinking its reach")
 
 -- Swinging at someone off to the side: the camera ray misses them, so the point
 -- comes from a ray straight at them instead. This is the case Impact Effects
@@ -226,11 +230,11 @@ check(stub.lastRay and math.abs(stub.lastRay.from.z - stub.lastRay.to.z) < 1e-9,
 check(stub.lastRay and stub.lastRay.from.z > victim.position.z + 40,
       "which is well above the ground")
 
--- Being hit: the attacker has no camera, so only the straight ray is used.
+-- Being hit lights nothing: it would be lighting the player's own face.
 calls = 1
 stub.sentGlobalEvents = {}
 stub.hitHandlers[1]({ attacker = victim, successful = true, hitPos = enginePos })
-check(#sentLights() == 1, "an enemy landing a hit on us lights that too")
+check(#sentLights() == 0, "being hit ourselves lights nothing")
 
 stub.packages["openmw.nearby"].castRay = function(from, to, opts)
     stub.lastRay = { from = from, to = to }
