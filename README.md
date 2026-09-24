@@ -71,9 +71,11 @@ The look is still the thing worth having, so the colour here is tuned to those
 frames rather than to the plugin. Measured on its own frames, the flash there lifts red by 0.03 while
 lifting green and blue by 0.09 and 0.11 - it turns the frame cold - and
 saturation nearly doubles. So the bloom is tinted cold, a cold tint goes over
-the frame, and saturation is pushed up rather than drained. Alongside its own
-frames the defaults land at `r 0.292 g 0.307 b 0.317` against the reference's
-`0.285 / 0.317 / 0.317`.
+the frame, and saturation is pushed up rather than drained, a little harder than
+the footage does it so the cold reads as deliberate: on a dark interior the
+defaults come out `r 0.286 g 0.339 b 0.416`. **Tint Amount** is the knob for
+that - 0.25 is the least that flips a warm room cold, 0.35 ships, past 0.5 it
+turns into a blue filter.
 
 For the original look instead: saturation `0`, tint `1.0, 0.22, 0.18`, tint
 amount `0.059`. Every part of it is a live uniform in the post processing HUD.
