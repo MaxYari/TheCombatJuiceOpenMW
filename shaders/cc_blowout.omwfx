@@ -33,15 +33,15 @@ uniform_float uPivot {
 }
 
 uniform_float uExposure {
-    default = 0.35;
+    default = 0.15;
     min = 0.0;
     step = 0.01;
     display_name = "Exposure Lift";
-    description = "A straight multiply over the whole image.";
+    description = "A straight multiply over the whole image. Kept small: in the footage this is tuned against the flash is nearly all added light, not a brightening of what was already there.";
 }
 
 uniform_float uBloom {
-    default = 0.9;
+    default = 1.7;
     min = 0.0;
     step = 0.05;
     display_name = "Bloom";
@@ -66,30 +66,36 @@ uniform_float uBloomRadius {
     description = "How far the bloom spreads, as a fraction of screen height.";
 }
 
-uniform_float uDesaturate {
-    default = 0.3;
+uniform_float uSaturation {
+    default = 1.35;
     min = 0.0;
-    max = 1.0;
     step = 0.01;
-    display_name = "Desaturation";
-    description = "Sanguine Symphony's death imagespace goes all the way to 1, fully monochrome. 0.3 keeps the scene's own colour while taking the edge off it.";
+    display_name = "Saturation";
+    description = "Colour at the peak, as a multiplier. Above 1 deepens it, which is what the reference footage does - its saturation almost doubles. 0 is fully monochrome, the way Sanguine Symphony's own death imagespace does it.";
+}
+
+uniform_vec3 uGlareTint {
+    default = vec3(0.35, 0.8, 1.4);
+    min = vec3(0.0, 0.0, 0.0);
+    display_name = "Glare Tint";
+    description = "Colour of the light the bloom adds. Cold by default: in the reference footage the flash adds three times as much blue and green as red.";
 }
 
 uniform_vec3 uTint {
-    default = vec3(1.0, 0.22, 0.18);
+    default = vec3(0.6, 1.05, 1.3);
     min = vec3(0.0, 0.0, 0.0);
     max = vec3(1.0, 1.0, 1.0);
     display_name = "Tint";
-    description = "Colour mixed in at the peak. Red, as the Skyrim mod's 'subtle red' death flash does it.";
+    description = "Colour mixed over the whole image at the peak. Cold, which is what the reference footage does - its flash turns the frame from warm to blue. Sanguine Symphony's own death flash uses red, vec3(1.0, 0.22, 0.18) at 0.059, if you would rather have that.";
 }
 
 uniform_float uTintAmount {
-    default = 0.06;
+    default = 0.25;
     min = 0.0;
     max = 1.0;
     step = 0.01;
     display_name = "Tint Amount";
-    description = "Sanguine Symphony uses 0.059.";
+    description = "How much of the tint is mixed over the frame at the peak. 0.25 is what it takes to flip a warm Morrowind interior cold, matching the footage.";
 }
 
 shared {
@@ -193,12 +199,11 @@ fragment cc_flash(rt1=RT_CCGlare) {
             glare += omw_Texture2D(RT_CCGlare, omw_TexCoord + offset).rgb * weight;
             total += weight;
         }
-        color += glare / max(total, 0.0001) * uBloom * s;
+        // The light the bloom adds carries the flash's colour with it.
+        color += glare / max(total, 0.0001) * uGlareTint * uBloom * s;
 
-        // Drain some colour and put a little of the tint back, the way the
-        // Skyrim mod's death flash goes monochrome with a touch of red.
         float luma = dot(color, CC_LUMA);
-        color = mix(color, vec3(luma), uDesaturate * s);
+        color = mix(vec3(luma), color, mix(1.0, uSaturation, s));
         color = mix(color, uTint * max(luma, 0.0), uTintAmount * s);
 
         omw_FragColor = vec4(color, scene.a);
@@ -207,7 +212,7 @@ fragment cc_flash(rt1=RT_CCGlare) {
 
 technique {
     passes = cc_bright, cc_flash;
-    description = "Cinematic Combat: a kill flash after Sanguine Symphony's death imagespace - zoom blur, contrast, bloom, a drain of colour and a touch of red.";
+    description = "Cinematic Combat: a kill flash - zoom blur and contrast after Sanguine Symphony's death imagespace, with the cold bloom of the footage it was shown in.";
     version = "1.2";
     author = "Max Yari";
     dynamic = true;

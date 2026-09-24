@@ -47,24 +47,37 @@ overwriting each other.
 
 ### Kill flash
 
-Ported from the death imagespace in the Skyrim mod
+The image smears out from the middle of the screen, contrast snaps up, the
+highlights bloom cold, and the whole frame turns from warm to blue for a moment.
+
+Its bones come from the death imagespace in the Skyrim mod
 [Sanguine Symphony](https://www.nexusmods.com/skyrimspecialedition/mods/148388),
-read out of its plugin: the image smears out from the middle of the screen,
-contrast snaps up, highlights bloom, the colour drains, and a little red goes
-back in. Its timing is used as it stands - half a second, peaking a tenth of the
-way in and falling away over the rest, which is a twentieth of a second to snap
-on and about half a second to let go.
+read out of that mod's plugin - it ships no shaders, and its only screen effect
+is three imagespace modifiers its SKSE plugin fires on a death. Their recipe is
+`radial blur 0.15`, `contrast x1.3`, `saturation 0`, `tint red at 0.059`, over
+half a second peaking a tenth of the way in. **The zoom blur and the timing are
+taken from it as they stand** - the blur is what reads as impact, and the timing
+is a twentieth of a second to snap on and the rest to let go.
 
-The numbers that mod uses are `contrast 1.3`, `radial blur 0.15`, `saturation 0`
-and `tint red at 0.059`, and they are the starting point here. Two of them are
-deliberately not literal: the contrast turns about a low pivot rather than mid
-grey, because in a Morrowind interior mid grey puts most of the screen on the
-darkening side of it, and the desaturation defaults to a third of the way rather
-than fully monochrome. Both are settings.
+The colour is not. That mod's flash drains to grey and puts red back in; the
+footage it was shown in does the opposite, and the footage is what this is tuned
+to match. Measured on its own frames, the flash there lifts red by 0.03 while
+lifting green and blue by 0.09 and 0.11 - it turns the frame cold - and
+saturation nearly doubles. So the bloom is tinted cold, a cold tint goes over
+the frame, and saturation is pushed up rather than drained. Alongside its own
+frames the defaults land at `r 0.292 g 0.307 b 0.317` against the reference's
+`0.285 / 0.317 / 0.317`.
 
-Everything about it - zoom blur, contrast, pivot, exposure, bloom and its
-threshold and radius, desaturation, tint and tint amount - is a live uniform in
-the post processing HUD, so it can be dialled in while the game runs.
+For the original look instead: saturation `0`, tint `1.0, 0.22, 0.18`, tint
+amount `0.059`. Every part of it is a live uniform in the post processing HUD.
+
+`tools/preview_flash.py` runs the shader's arithmetic over a screenshot outside
+the game, reading the defaults out of the shader file, so a change can be
+checked without a kill to test it on:
+
+```sh
+<blender>/python/bin/python3 tools/preview_flash.py shot.png out.png [uName=value ...]
+```
 
 ### Sparks
 

@@ -25,11 +25,17 @@ Fires when a hit lands, decaying over a third of a second. Hits you take don't s
 
 [size=4][b]Kill flash[/b][/size]
 
-Ported from the death imagespace in the Skyrim mod [url=https://www.nexusmods.com/skyrimspecialedition/mods/148388]Sanguine Symphony[/url], read out of its plugin: the image smears out from the middle of the screen, contrast snaps up, highlights bloom, the colour drains, and a little red goes back in. Its timing is used as it stands - half a second, peaking a tenth of the way in and falling away over the rest, which is a twentieth of a second to snap on and about half a second to let go.
+The image smears out from the middle of the screen, contrast snaps up, the highlights bloom cold, and the whole frame turns from warm to blue for a moment.
 
-The numbers that mod uses are [font=Courier New]contrast 1.3[/font], [font=Courier New]radial blur 0.15[/font], [font=Courier New]saturation 0[/font] and [font=Courier New]tint red at 0.059[/font], and they are the starting point here. Two of them are deliberately not literal: the contrast turns about a low pivot rather than mid grey, because in a Morrowind interior mid grey puts most of the screen on the darkening side of it, and the desaturation defaults to a third of the way rather than fully monochrome. Both are settings.
+Its bones come from the death imagespace in the Skyrim mod [url=https://www.nexusmods.com/skyrimspecialedition/mods/148388]Sanguine Symphony[/url], read out of that mod's plugin - it ships no shaders, and its only screen effect is three imagespace modifiers its SKSE plugin fires on a death. Their recipe is [font=Courier New]radial blur 0.15[/font], [font=Courier New]contrast x1.3[/font], [font=Courier New]saturation 0[/font], [font=Courier New]tint red at 0.059[/font], over half a second peaking a tenth of the way in. [b]The zoom blur and the timing are taken from it as they stand[/b] - the blur is what reads as impact, and the timing is a twentieth of a second to snap on and the rest to let go.
 
-Everything about it - zoom blur, contrast, pivot, exposure, bloom and its threshold and radius, desaturation, tint and tint amount - is a live uniform in the post processing HUD, so it can be dialled in while the game runs.
+The colour is not. That mod's flash drains to grey and puts red back in; the footage it was shown in does the opposite, and the footage is what this is tuned to match. Measured on its own frames, the flash there lifts red by 0.03 while lifting green and blue by 0.09 and 0.11 - it turns the frame cold - and saturation nearly doubles. So the bloom is tinted cold, a cold tint goes over the frame, and saturation is pushed up rather than drained. Alongside its own frames the defaults land at [font=Courier New]r 0.292 g 0.307 b 0.317[/font] against the reference's [font=Courier New]0.285 / 0.317 / 0.317[/font].
+
+For the original look instead: saturation [font=Courier New]0[/font], tint [font=Courier New]1.0, 0.22, 0.18[/font], tint amount [font=Courier New]0.059[/font]. Every part of it is a live uniform in the post processing HUD.
+
+[font=Courier New]tools/preview_flash.py[/font] runs the shader's arithmetic over a screenshot outside the game, reading the defaults out of the shader file, so a change can be checked without a kill to test it on:
+
+[code]<blender>/python/bin/python3 tools/preview_flash.py shot.png out.png [uName=value ...][/code]
 
 [size=4][b]Sparks[/b][/size]
 
