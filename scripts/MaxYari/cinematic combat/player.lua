@@ -174,6 +174,12 @@ local function updateShake()
         amplitude * gutils.noise(f * 1.17 + shake.seed + 41.7) * 1.35)
 end
 
+-- One duration knob per slow motion; the shape of the dip is fixed. The split is
+-- Dynamic Reticle's, measured rather than copied: its 0.05/0.1/0.3 were ticked
+-- with simulation dt, which is the very thing being slowed, so at its 0.2 floor
+-- they came to 0.07/0.45/1.00 in real seconds. These are those, as fractions.
+local SLOWDOWN_SHAPE = { inTime = 0.04, hold = 0.30, outTime = 0.66 }
+
 -- Kill flash ----------------------------------------------------------------
 --
 -- postprocessing.load throws if the shader does not compile or post processing
@@ -217,18 +223,21 @@ local function startFlash(duration)
     flash = { startedAt = now(), duration = duration, strength = flashSettings.FlashStrength or 1 }
 end
 
--- Sanguine Symphony's imagespace curves are linear: up to a peak a tenth of the
--- way in, straight back down. The footage holds its peak instead - frame
--- brightness there ramps over a frame or two, sits flat for about seven, and
--- takes another twenty or so to come back - so the flash is at full strength
--- long enough to register rather than passing through it.
-local FLASH_RAMP = 0.05
-local FLASH_HOLD_UNTIL = 0.28
-
+-- The flash runs the same shape as the slow motion it rides, phase for phase,
+-- so the two move together: in on the same curve, held for the same stretch,
+-- and released on the mirror of the slow motion's recovery. On its own tail the
+-- flash used to be all but gone a third of the way through the slow motion,
+-- while the world was still crawling.
 local function flashEnvelope(t)
-    if t < FLASH_RAMP then return t / FLASH_RAMP end
-    if t < FLASH_HOLD_UNTIL then return 1 end
-    return (1 - (t - FLASH_HOLD_UNTIL) / (1 - FLASH_HOLD_UNTIL)) ^ 1.6
+    local shape = SLOWDOWN_SHAPE
+    if t < shape.inTime then
+        local x = t / shape.inTime
+        return 1 - (1 - x) ^ 3                      -- easeOutCubic, as the dip uses
+    end
+    local held = shape.inTime + shape.hold
+    if t < held then return 1 end
+    local x = math.min((t - held) / shape.outTime, 1)
+    return 1 - x ^ 3                                -- the mirror of its easeInCubic recovery
 end
 
 local function updateFlash()
@@ -244,12 +253,6 @@ local function updateFlash()
 end
 
 -- Kills ---------------------------------------------------------------------
-
--- One duration knob per slow motion; the shape of the dip is fixed. The split is
--- Dynamic Reticle's, measured rather than copied: its 0.05/0.1/0.3 were ticked
--- with simulation dt, which is the very thing being slowed, so at its 0.2 floor
--- they came to 0.07/0.45/1.00 in real seconds. These are those, as fractions.
-local SLOWDOWN_SHAPE = { inTime = 0.04, hold = 0.30, outTime = 0.66 }
 
 local function requestSlowdown(scale, duration)
     core.sendGlobalEvent(DEFS.e.Slowdown, {
@@ -347,10 +350,17 @@ end
 -- A Morrowind light has no brightness of its own: how much it lights the room is
 -- the magnitude of its colour, and the radius is only how far it reaches. So
 -- power scales the colour and leaves the reach alone.
-local function spawnLight(pos, radius, duration, color, fallback, power)
-    if not pos then return end
-    power = power or 1
-    if power <= 0 then return end
+--
+-- Nor can a light already in the world be dimmed - its colour belongs to the
+-- record, not the object. To fade one out it has to be handed over to a dimmer
+-- record, so the light is played as a short run of them, each a little darker
+-- than the last. Three steps is enough for a light that lives a tenth of a
+-- second; the alternative is it simply vanishing.
+local LIGHT_FADE = { 1.0, 0.55, 0.22 }
+
+local pendingLights = {}
+
+local function sendLight(pos, radius, duration, color, fallback, power)
     core.sendGlobalEvent(DEFS.e.SpawnLight, {
         player = selfObject,
         pos = pos,
@@ -360,6 +370,35 @@ local function spawnLight(pos, radius, duration, color, fallback, power)
         g = (color and color.g or fallback[2]) * power,
         b = (color and color.b or fallback[3]) * power,
     })
+end
+
+local function spawnLight(pos, radius, duration, color, fallback, power)
+    if not pos then return end
+    power = power or 1
+    if power <= 0 or duration <= 0 then return end
+
+    local step = duration / #LIGHT_FADE
+    sendLight(pos, radius, step * 1.2, color, fallback, power * LIGHT_FADE[1])
+    for i = 2, #LIGHT_FADE do
+        table.insert(pendingLights, {
+            at = now() + step * (i - 1),
+            pos = pos, radius = radius, duration = step * 1.2,
+            color = color, fallback = fallback, power = power * LIGHT_FADE[i],
+        })
+    end
+end
+
+-- Due steps are sent on the frame they come up.
+local function updatePendingLights()
+    if #pendingLights == 0 then return end
+    local t = now()
+    for i = #pendingLights, 1, -1 do
+        local entry = pendingLights[i]
+        if t >= entry.at then
+            sendLight(entry.pos, entry.radius, entry.duration, entry.color, entry.fallback, entry.power)
+            table.remove(pendingLights, i)
+        end
+    end
 end
 
 local function sparkLight(pos)
@@ -532,6 +571,7 @@ end
 local function onFrame()
     updateShake()
     updateFlash()
+    updatePendingLights()
 end
 
 local function onLoad()
@@ -539,6 +579,7 @@ local function onLoad()
     encounterStartedAt = nil
     shake = nil
     flash = nil
+    pendingLights = {}
     if flashShader then flashShader.u.uStrength = 0 end
 end
 

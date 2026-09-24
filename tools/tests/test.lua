@@ -210,6 +210,16 @@ check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
 check(lights[1] and lights[1].r < 0.5 and lights[1].radius == 90,
       "dimmed to a third, without shrinking its reach")
 
+-- A light in the world cannot be dimmed - its colour is the record's, not the
+-- object's - so it is handed over to dimmer records as it goes out.
+local first = lights[1].r
+stub.sentGlobalEvents = {}
+for _ = 1, 8 do frame(0.01) end
+local steps = sentLights()
+check(#steps == 2, "and is followed by dimmer copies rather than simply vanishing")
+check(steps[1] and steps[2] and steps[1].r < first and steps[2].r < steps[1].r,
+      "each one darker than the last")
+
 -- Swinging at someone off to the side: the camera ray misses them, so the point
 -- comes from a ray straight at them instead. This is the case Impact Effects
 -- cannot answer at all.

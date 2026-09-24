@@ -53,7 +53,11 @@ and the light in the room turns blue for a moment.
 **It rides one of the slow motions** - the short one, the long one, or either -
 and runs for exactly as long as that slow motion does, so the two always start
 and end together and there is no second duration to keep in step. A kill with no
-slow motion gets no flash.
+slow motion gets no flash. It also runs the *same shape*, phase for phase: in on
+the same curve, held for the same stretch, and released on the mirror of the slow
+motion's own recovery, so the screen comes back exactly as the world does. On its
+own tail it used to be all but gone a third of the way through the slow motion,
+while everything was still crawling.
 
 Its bones come from the death imagespace in the Skyrim mod
 [Sanguine Symphony](https://www.nexusmods.com/skyrimspecialedition/mods/148388),
@@ -167,6 +171,11 @@ A Morrowind light has no brightness field. What it lights is the magnitude of
 its colour, and the radius is only how far it reaches - so **Power** scales the
 colour, leaving the reach alone. The warm one ships at a third, which reads as a
 glint off the blow rather than a lamp being lit next to you.
+
+Nor can a light already in the world be dimmed: its colour belongs to the record
+rather than to the object, and a record cannot be edited once it exists. So a
+light is played as a short run of three, each darker than the last, which fades
+it out instead of having it vanish between one frame and the next.
 
 **Where the blow landed** is worked out here rather than taken from anyone else,
 because neither available answer is good enough. The engine's hit position is
