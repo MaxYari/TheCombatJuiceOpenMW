@@ -1,7 +1,8 @@
-# Setting names and descriptions are written out in English in settings.lua and
-# used as they are when a player's language has no translation for them. The
-# "select" renderer, though, looks every option up in here, so the slow motion
-# and kill flash triggers need an entry.
+# Setting names are written out in English in settings.lua and used as they are
+# when there is no translation. The "select" renderers look their options up
+# here, so every dropdown value needs an entry.
+
+# Slow motion and kill flash triggers
 "Never": "Never"
 "Every kill": "Every kill"
 "Encounter end": "Last enemy of a fight"
@@ -9,3 +10,10 @@
 "Short slow motion": "With the short slow motion"
 "Long slow motion": "With the long slow motion"
 "Both slow motions": "With either slow motion"
+
+# Hit markers, by the name of their definition file in hitmarkers/
+"faded_triangles": "Faded triangles"
+"cross": "Diagonal cross"
+"sm_light": "Stupid-Metal light"
+"sm_red": "Stupid-Metal red"
+"sm_skull": "Stupid-Metal skull"

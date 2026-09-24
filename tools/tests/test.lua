@@ -7,6 +7,9 @@ package.path = package.path .. ";" .. arg[1] .. "/?.lua;" .. arg[0]:gsub("[^/]*$
 local MOD = arg[1]
 
 local stub = require("stub")
+-- The VFS root is the mod folder: the scripts live under it.
+stub.modRoot = arg[1]:gsub("scripts/MaxYari/combat juice$", ""):gsub("/$", "")
+if stub.modRoot == "" then stub.modRoot = "." end
 local failures, checks = 0, 0
 local function check(cond, what)
     checks = checks + 1
@@ -68,7 +71,7 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 4, "four settings groups registered")
+check(#stub.settingsGroups == 6, "six settings groups registered")
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -305,6 +308,44 @@ check(math.abs(solid / scratch - 2) < 0.25,
 setting("Camera", "ShakeScalesWithDamage", false)
 check(shakeFrames(0.05) == shakeFrames(0.50), "with the setting off, every blow shakes the same")
 setting("Camera", "ShakeScalesWithDamage", true)
+
+print("\n== hit markers ==")
+local hm = loadScript("hitmarkers.lua")
+check(#hm.ids >= 5, "every definition file in hitmarkers/ is found (" .. #hm.ids .. ")")
+local byStyle = { slide = 0, fade = 0 }
+for _, id in ipairs(hm.ids) do
+    local def = hm.get(id)
+    byStyle[def.style] = (byStyle[def.style] or 0) + 1
+end
+check(byStyle.slide >= 2 and byStyle.fade >= 3,
+      "both animation styles are represented, Dynamic Reticle's and Stupid-Metal's")
+check(hm.get("sm_skull").recolour == false, "the skull is marked as keeping its own colours")
+check(hm.get("faded_triangles").recolour == true, "and the white art takes the colour setting")
+check(#hm.get("faded_triangles").parts == 4 and #hm.get("sm_skull").parts == 1,
+      "a marker can be four pieces or one")
+
+stub.stance = 1                        -- weapon drawn
+stub.equipped = { kind = "weapon", weaponType = 9 }  -- a bow, which the defaults sound on
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 1, "a hit plays the hit marker sound")
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.9, lethal = true })
+check(#stub.sentSounds == 1 and stub.sentSounds[1].path:find("bass_stab"),
+      "and a kill plays the kill sound instead")
+
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.1, weak = true })
+check(#stub.sentSounds == 0, "a glancing hit is silent")
+
+stub.equipped = { kind = "weapon", weaponType = 1 }  -- a sword: off by default
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 0, "and melee is silent until switched on")
+setting("MarkerSounds", "MeleeSound", true)
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 1, "once switched on, melee plays it")
 
 print("\n== spark variety ==")
 local function sentVfx()

@@ -1,15 +1,43 @@
 # Combat Juice
 
-An OpenMW Lua mod that makes melee land harder: kills drop the world into slow
-motion, the camera shakes when a hit connects, the screen blows out like a
-camera caught by a sudden light, and Morrowind's spark effect is replaced with
-one made of streaks that fly the way they are actually moving.
+An OpenMW Lua mod that makes melee land harder: hit markers, kill slow motion,
+camera shake that scales with the blow, a flash on the kill, impact lights, and
+Morrowind's spark effect replaced with one made of streaks that fly the way they
+are actually moving.
 
 Needs **OpenMW 0.51** or newer and **[Max Yari's Script Services (MSS)](https://www.nexusmods.com/morrowind/mods/60256)**.
 **[OpenMW Impact Effects](https://www.nexusmods.com/morrowind/mods/55508)** is
 optional but strongly recommended - it is what decides where sparks happen.
 
 ## What it does
+
+### Hit markers
+
+A marker on every hit and a different one on the kill, with a sound that can be
+switched on per weapon class. Both this mod's predecessors had them and they
+worked differently, so neither behaviour was picked: **a marker is a definition
+file** in `hitmarkers/`, and the file says what it is made of and how it moves.
+
+```yaml
+name: Faded Triangles
+style: slide        # slide - the pieces spring apart, then fade
+                    # fade  - the whole thing appears at once and decays
+recolour: true      # false for art that is already coloured, like the skull
+size: [14, 14]
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_tl.png
+    direction: [-1, -1]
+```
+
+`slide` is Dynamic Reticle's four triangles springing out of the centre; `fade`
+is Stupid-Metal Hitmarkers' single image decaying in place. Five ship - the
+triangles, a diagonal cross, and Stupid-Metal's light, red and skull - and every
+definition found in `hitmarkers/` appears in the settings, so another mod can
+add one by dropping a file in beside them.
+
+Sounds work the same way: every file in `sounds/MaxYari/combat juice/hitmarkers/`
+is listed, and each picker has a **play** button to hear it without leaving the
+menu.
 
 ### Slow motion
 

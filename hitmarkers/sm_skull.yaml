@@ -1,0 +1,8 @@
+name: Stupid-Metal Skull
+style: fade
+recolour: false
+size: [84, 133]
+alpha: 1.0
+decay: 6
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/sm_skull.png

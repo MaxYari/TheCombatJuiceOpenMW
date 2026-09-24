@@ -52,6 +52,8 @@ return {
         camera = "SettingsCombatJuiceCamera",
         flash = "SettingsCombatJuiceFlash",
         effects = "SettingsCombatJuiceEffects",
+        markers = "SettingsCombatJuiceMarkers",
+        markerSounds = "SettingsCombatJuiceMarkerSounds",
     },
 
     -- Impact Effects materials that throw sparks. Everything else on an actor

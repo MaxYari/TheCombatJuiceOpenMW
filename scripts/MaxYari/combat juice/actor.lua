@@ -54,9 +54,17 @@ local function onHealthDecrease(e)
     -- damage figure, which is read before armour and difficulty are applied to
     -- it: our hit handler runs ahead of the one that does that.
     if byPlayer and e.baseHealth and e.baseHealth > 0 then
+        -- Glancing hits come from a separate mod, if it is installed.
+        local weak = false
+        if I.GlancedHits and I.GlancedHits.lastHitInfo
+            and core.getRealTime() - I.GlancedHits.lastHitInfo.time <= 0.1 then
+            weak = I.GlancedHits.lastHitInfo.glancedHit and true or false
+        end
         attacker:sendEvent(DEFS.e.DamageDealt, {
             victim = selfObject,
             fraction = damage / e.baseHealth,
+            lethal = e.health <= 0,
+            weak = weak,
         })
     end
 

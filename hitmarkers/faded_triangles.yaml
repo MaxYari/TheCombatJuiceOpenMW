@@ -1,0 +1,28 @@
+# A hit marker definition. Any mod can drop one of these in hitmarkers/ and it
+# will show up in Combat Juice's marker lists.
+#
+#   style     slide - the parts spring apart from the centre, then fade
+#             fade  - the whole thing appears at once and fades out
+#   recolour  whether the marker takes the colour from the settings. Art that is
+#             already coloured (a red skull) should say no.
+#   size      one part, in pixels, before the size multiplier
+#   parts     one entry for a single piece marker, or one per piece
+#   direction which way a piece slides, and which corner it anchors to
+
+name: Faded Triangles
+style: slide
+recolour: true
+size: [14, 14]
+alpha: 1.0
+spread: 0.0625
+slideTime: 0.2
+fadeTime: 0.6
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_tl.png
+    direction: [-1, -1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_tr.png
+    direction: [1, -1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_bl.png
+    direction: [-1, 1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_br.png
+    direction: [1, 1]

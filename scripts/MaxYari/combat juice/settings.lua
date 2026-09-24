@@ -3,6 +3,8 @@ local util = require("openmw.util")
 
 local mp = "scripts/MaxYari/combat juice/"
 local DEFS = require(mp .. "defs")
+local hitmarkers = require(mp .. "hitmarkers")
+local sounds = require(mp .. "sounds")
 
 local function number(key, name, default, min, max, description)
     return {
@@ -140,6 +142,69 @@ I.Settings.registerGroup {
             "Picks one of several baked bursts per hit instead of the same one."),
         checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', true,
             "Impact Effects gives medium armour a sound but no sparks; this fills that in."),
+    },
+}
+
+I.Settings.registerGroup {
+    key = DEFS.settings.markers,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = 'Hit Markers',
+    order = 5,
+    permanentStorage = true,
+    settings = {
+        checkbox('MarkersEnabled', 'Show Hit Markers', true),
+        select('HitMarker', 'Hit Marker', 'faded_triangles', hitmarkers.ids,
+            "Every definition in hitmarkers/ is listed here, from this mod or any other."),
+        select('KillMarker', 'Kill Marker', 'cross', hitmarkers.ids),
+        number('MarkerScale', 'Marker Size', 0.75, 0.05, nil),
+        number('MarkerOpacity', 'Marker Opacity', 1.0, 0, 1),
+        number('WeakMarkerOpacity', 'Glancing Hit Opacity', 0.0, 0, 1,
+            "For glancing hits, if a mod reports them. 0 hides them."),
+        {
+            key = 'MarkerColor',
+            renderer = 'color',
+            default = util.color.rgb(0.929, 0.8, 0.624),
+            name = 'Hit Marker Colour',
+            description = "Markers whose definition says recolour: false keep their own colours.",
+        },
+        {
+            key = 'KillMarkerColor',
+            renderer = 'color',
+            default = util.color.rgb(0.91, 0.145, 0.196),
+            name = 'Kill Marker Colour',
+        },
+    },
+}
+
+local function soundSelect(key, name, default, description)
+    return {
+        key = key,
+        renderer = 'cjSoundSelect',
+        default = default,
+        argument = { items = sounds.names, paths = sounds.paths },
+        name = name,
+        description = description,
+    }
+end
+
+I.Settings.registerGroup {
+    key = DEFS.settings.markerSounds,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = 'Hit Marker Sounds',
+    order = 6,
+    permanentStorage = true,
+    settings = {
+        soundSelect('HitMarkerSound', 'Hit Sound', 'fps_meaty_hit', "Press play to hear it."),
+        number('HitMarkerVolume', 'Hit Volume', 2.0, 0, nil),
+        soundSelect('DeathMarkerSound', 'Kill Sound', 'bass_stab'),
+        number('DeathMarkerVolume', 'Kill Volume', 2.0, 0, nil),
+        number('MarkerSoundPitchMin', 'Pitch Minimum', 0.8, 0.1, nil),
+        number('MarkerSoundPitchMax', 'Pitch Maximum', 1.2, 0.1, nil),
+        checkbox('MeleeSound', 'Play With Melee', false),
+        checkbox('MarksmanSound', 'Play With Marksman', true),
+        checkbox('SpellcasterSound', 'Play With Spells', true),
     },
 }
 

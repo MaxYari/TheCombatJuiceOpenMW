@@ -1,0 +1,17 @@
+name: Diagonal Cross
+style: slide
+recolour: true
+size: [22, 22]
+alpha: 1.0
+spread: 0.045
+slideTime: 0.18
+fadeTime: 0.7
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/cross_tl.png
+    direction: [-1, -1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/cross_tr.png
+    direction: [1, -1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/cross_bl.png
+    direction: [-1, 1]
+  - texture: textures/MaxYari/combat juice/hitmarkers/cross_br.png
+    direction: [1, 1]

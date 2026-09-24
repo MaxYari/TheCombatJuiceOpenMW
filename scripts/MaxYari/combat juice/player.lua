@@ -19,6 +19,8 @@ local DEFS = require(mp .. "defs")
 local gutils = require(mp .. "gutils")
 local SettingsHelper = require(mp .. "settings_helper")
 local shaderUtils = require(mp .. "shader_utils")
+local hitmarkers = require(mp .. "hitmarkers")
+local soundFiles = require(mp .. "sounds")
 require(mp .. "settings")
 
 -- Max Yari's Script Services (MSS) is a required dependency: checked once, when this script loads.
@@ -27,6 +29,8 @@ if not core.contentFiles.has("MaxYariScriptServices.omwscripts") then
     ui.showMessage("Combat Juice: Critical dependency is missing, please install Max Yari's Script Services (MSS)")
 end
 
+local markerSettings = SettingsHelper:new(DEFS.settings.markers)
+local markerSoundSettings = SettingsHelper:new(DEFS.settings.markerSounds)
 local slowdownSettings = SettingsHelper:new(DEFS.settings.slowdown)
 local cameraSettings = SettingsHelper:new(DEFS.settings.camera)
 local flashSettings = SettingsHelper:new(DEFS.settings.flash)
@@ -471,10 +475,58 @@ local function damageShakeScale(fraction)
     return DAMAGE_SHAKE_MIN + t * (DAMAGE_SHAKE_MAX - DAMAGE_SHAKE_MIN)
 end
 
+-- Hit markers ---------------------------------------------------------------
+
+-- Which of the three "play with..." switches covers what is in our hands.
+local function soundAllowed()
+    local ok, stance = pcall(types.Actor.getStance, selfObject)
+    if not ok then return false end
+    if stance == types.Actor.STANCE.Spell then return markerSoundSettings.SpellcasterSound end
+    if stance ~= types.Actor.STANCE.Weapon then return false end
+
+    local weapon = types.Actor.getEquipment(selfObject, types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local record = weapon and types.Weapon.objectIsInstance(weapon) and types.Weapon.record(weapon)
+    local ranged = record and (record.type == types.Weapon.TYPE.MarksmanBow
+        or record.type == types.Weapon.TYPE.MarksmanCrossbow
+        or record.type == types.Weapon.TYPE.MarksmanThrown)
+    if ranged then return markerSoundSettings.MarksmanSound end
+    return markerSoundSettings.MeleeSound
+end
+
+local function playMarker(lethal, weak)
+    if not markerSettings.MarkersEnabled then return end
+
+    local opacity = markerSettings.MarkerOpacity or 1
+    if weak and not lethal then opacity = markerSettings.WeakMarkerOpacity or 0 end
+    if opacity <= 0 then return end
+
+    hitmarkers.play(lethal and markerSettings.KillMarker or markerSettings.HitMarker, {
+        scale = markerSettings.MarkerScale or 1,
+        alpha = opacity,
+        color = lethal and markerSettings.KillMarkerColor or markerSettings.MarkerColor,
+    })
+
+    -- A glancing blow is shown but not heard.
+    if (weak and not lethal) or not soundAllowed() then return end
+
+    local minPitch = markerSoundSettings.MarkerSoundPitchMin or 1
+    local maxPitch = markerSoundSettings.MarkerSoundPitchMax or 1
+    local name = lethal and markerSoundSettings.DeathMarkerSound or markerSoundSettings.HitMarkerSound
+    local path = soundFiles.path(name)
+    if not path then return end
+    core.sound.playSoundFile3d(path, omwself, {
+        volume = (lethal and markerSoundSettings.DeathMarkerVolume
+            or markerSoundSettings.HitMarkerVolume) or 1,
+        pitch = minPitch + math.random() * math.max(maxPitch - minPitch, 0),
+        loop = false,
+    })
+end
+
 -- Sent by the actor we hit once the health has actually come off it.
 local function onDamageDealt(data)
     local scale = damageShakeScale(data.fraction)
     startShake(scale, scale)
+    playMarker(data.lethal, data.weak)
 end
 
 -- Sent by the actor we hit, from its own I.Combat hit handler. The shake waits
@@ -558,6 +610,8 @@ end
 local function onUpdate(dt)
     if dt <= 0 then return end
     setUpImpactHooks()
+    hitmarkers.setVisible(I.UI.isHudVisible())
+    hitmarkers.update(dt)
 end
 
 local function onFrame()

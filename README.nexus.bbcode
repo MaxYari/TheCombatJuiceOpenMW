@@ -1,10 +1,27 @@
 [size=6][b]Combat Juice[/b][/size]
 
-An OpenMW Lua mod that makes melee land harder: kills drop the world into slow motion, the camera shakes when a hit connects, the screen blows out like a camera caught by a sudden light, and Morrowind's spark effect is replaced with one made of streaks that fly the way they are actually moving.
+An OpenMW Lua mod that makes melee land harder: hit markers, kill slow motion, camera shake that scales with the blow, a flash on the kill, impact lights, and Morrowind's spark effect replaced with one made of streaks that fly the way they are actually moving.
 
 Needs [b]OpenMW 0.51[/b] or newer and [b][url=https://www.nexusmods.com/morrowind/mods/60256]Max Yari's Script Services (MSS)[/url][/b]. [b][url=https://www.nexusmods.com/morrowind/mods/55508]OpenMW Impact Effects[/url][/b] is optional but strongly recommended - it is what decides where sparks happen.
 
 [size=5][b]What it does[/b][/size]
+
+[size=4][b]Hit markers[/b][/size]
+
+A marker on every hit and a different one on the kill, with a sound that can be switched on per weapon class. Both this mod's predecessors had them and they worked differently, so neither behaviour was picked: [b]a marker is a definition file[/b] in [font=Courier New]hitmarkers/[/font], and the file says what it is made of and how it moves.
+
+[code]name: Faded Triangles
+style: slide        # slide - the pieces spring apart, then fade
+                    # fade  - the whole thing appears at once and decays
+recolour: true      # false for art that is already coloured, like the skull
+size: [14, 14]
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/hm_faded_tri_tl.png
+    direction: [-1, -1][/code]
+
+[font=Courier New]slide[/font] is Dynamic Reticle's four triangles springing out of the centre; [font=Courier New]fade[/font] is Stupid-Metal Hitmarkers' single image decaying in place. Five ship - the triangles, a diagonal cross, and Stupid-Metal's light, red and skull - and every definition found in [font=Courier New]hitmarkers/[/font] appears in the settings, so another mod can add one by dropping a file in beside them.
+
+Sounds work the same way: every file in [font=Courier New]sounds/MaxYari/combat juice/hitmarkers/[/font] is listed, and each picker has a [b]play[/b] button to hear it without leaving the menu.
 
 [size=4][b]Slow motion[/b][/size]
 

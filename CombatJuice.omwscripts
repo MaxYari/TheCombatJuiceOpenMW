@@ -1,3 +1,4 @@
 PLAYER: scripts\MaxYari\combat juice\player.lua
 NPC, CREATURE: scripts\MaxYari\combat juice\actor.lua
 GLOBAL: scripts\MaxYari\combat juice\global.lua
+MENU: scripts\MaxYari\combat juice\menu.lua

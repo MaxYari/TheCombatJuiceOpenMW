@@ -8,6 +8,7 @@ M.note = note
 
 M.realTime = 100.0
 M.allObjects = {}
+M.sentSounds = {}
 M.lastLightRecord = nil
 M.settingsStore = {}     -- [section][key] = value
 M.globalStore = {}       -- [section][key] = value
@@ -21,6 +22,17 @@ M.subscribers = {}
 
 -- Storage sections notify their subscribers on a write, the way the engine's do:
 -- that is how the mod's settings cache learns a setting changed.
+local function vec2(x, y)
+    local v = { x = x, y = y }
+    setmetatable(v, { __add = function(a, b) return vec2(a.x + b.x, a.y + b.y) end,
+                      __sub = function(a, b) return vec2(a.x - b.x, a.y - b.y) end,
+                      __mul = function(a, k)
+                          if type(k) == "table" then return vec2(a.x * k.x, a.y * k.y) end
+                          return vec2(a.x * k, a.y * k)
+                      end })
+    return v
+end
+
 local function vec3(x, y, z)
     local v = { x = x, y = y, z = z }
     setmetatable(v, { __add = function(a, b) return vec3(a.x + b.x, a.y + b.y, a.z + b.z) end,
@@ -80,6 +92,7 @@ local player = M.newObject("player", { id = "player" })
 M.player = player
 
 M.vec3 = vec3
+M.vec2 = vec2
 
 local packages = {}
 M.packages = packages
@@ -92,10 +105,15 @@ packages["openmw.core"] = {
     sendGlobalEvent = function(name, data)
         table.insert(M.sentGlobalEvents, { name = name, data = data })
     end,
-    sound = { playSoundFile3d = function() end, isEnabled = function() return true end },
+    sound = {
+        playSoundFile3d = function(path, obj, opts)
+            table.insert(M.sentSounds, { path = path, options = opts })
+        end,
+        isEnabled = function() return true end,
+    },
 }
 packages["openmw.util"] = {
-    vector2 = function(x, y) return { x = x, y = y } end,
+    vector2 = vec2,
     color = {
         rgb = function(r, g, b) return { r = r, g = g, b = b } end,
         hex = function() return { r = 1, g = 1, b = 1 } end,
@@ -111,7 +129,35 @@ packages["openmw.storage"] = {
 packages["openmw.async"] = setmetatable({}, { __index = function(_, k)
     if k == "callback" then return function(_, fn) return fn end end
 end })
-packages["openmw.ui"] = { showMessage = function(m) note("ui.showMessage: %s", m) end,
+local function uiElement(layout)
+    local el = { layout = layout }
+    function el:update() end
+    function el:destroy() end
+    return el
+end
+
+packages["openmw.ui"] = {
+    TYPE = setmetatable({}, { __index = function(_, k) return k end }),
+    ALIGNMENT = setmetatable({}, { __index = function(_, k) return k end }),
+    texture = function(t) return t end,
+    content = function(list)
+        local items, byName = {}, {}
+        local content = {}
+        function content:add(child)
+            table.insert(items, child)
+            if child.name then byName[child.name] = child end
+        end
+        for _, child in ipairs(list or {}) do content:add(child) end
+        return setmetatable(content, {
+            __index = function(_, k)
+                if type(k) == "number" then return items[k] end
+                return byName[k]
+            end,
+            __len = function() return #items end,
+        })
+    end,
+    create = function(layout) M.lastUi = uiElement(layout) return M.lastUi end,
+    showMessage = function(m) note("ui.showMessage: %s", m) end,
     isHudVisible = function() return true end }
 packages["openmw.camera"] = {
     getPosition = function() return vec3(0, -100, 100) end,
@@ -134,14 +180,23 @@ packages["openmw.animation"] = {
 }
 packages["openmw.types"] = {
     Player = { objectIsInstance = function(o) return o ~= nil and o.kind == "player" end },
+    Weapon = {
+        objectIsInstance = function(o) return o ~= nil and o.kind == "weapon" end,
+        record = function(o) return { type = o and o.weaponType or 0 } end,
+        TYPE = { ShortBladeOneHand = 0, LongBladeOneHand = 1, MarksmanBow = 9,
+                 MarksmanCrossbow = 10, MarksmanThrown = 11 },
+    },
     Actor = {
+        STANCE = { Nothing = 0, Weapon = 1, Spell = 2 },
+        EQUIPMENT_SLOT = { CarriedRight = 1, Helmet = 2, Cuirass = 3, Greaves = 4 },
+        getStance = function(o) return M.stance or 1 end,
+        getEquipment = function(o, slot) return M.equipped end,
         objectIsInstance = function(o)
             return o ~= nil and (o.kind == "npc" or o.kind == "creature" or o.kind == "player")
         end,
         isDead = function(o) return o.dead end,
         isDeathFinished = function(o) return o.dead end,
-        getStance = function() return 0 end,
-        STANCE = { Nothing = 0 },
+
     },
     NPC = {
         objectIsInstance = function(o) return o ~= nil and o.kind == "npc" end,
@@ -182,8 +237,74 @@ packages["openmw.nearby"] = {
     end,
     COLLISION_TYPE = { World = 1, Door = 2, Actor = 4, HeightMap = 8, Default = 15 },
 }
-packages["openmw.vfs"] = { pathsWithPrefix = function() return function() return nil end end,
-    fileExists = function() return true end }
+-- The VFS is the mod folder itself, so definition files and sounds are the real ones.
+M.modRoot = "."
+packages["openmw.vfs"] = {
+    pathsWithPrefix = function(prefix)
+        local out = {}
+        local cmd = string.format('find "%s/%s" -type f 2>/dev/null', M.modRoot, prefix)
+        local pipe = io.popen(cmd)
+        if pipe then
+            for line in pipe:lines() do
+                table.insert(out, (line:gsub("^%./", ""):gsub("^" .. M.modRoot .. "/", "")))
+            end
+            pipe:close()
+        end
+        local i = 0
+        return function() i = i + 1 return out[i] end
+    end,
+    fileExists = function() return true end,
+}
+
+-- Enough YAML for the definition files: scalars, [a, b] lists and "- " items.
+local function parseYaml(path)
+    local root, list, item = {}, nil, nil
+    local function scalar(v)
+        v = v:match("^%s*(.-)%s*$")
+        if v == "" then return nil end
+        if v == "true" then return true end
+        if v == "false" then return false end
+        if v:match("^%[.*%]$") then
+            local out = {}
+            for piece in v:sub(2, -2):gmatch("[^,]+") do
+                table.insert(out, tonumber(piece) or piece:match("^%s*(.-)%s*$"))
+            end
+            return out
+        end
+        return tonumber(v) or v
+    end
+    for line in io.lines(path) do
+        if not line:match("^%s*#") and line:match("%S") then
+            local indent = #(line:match("^%s*"))
+            local dash, rest = line:match("^%s*(%-)%s*(.*)$")
+            if dash then
+                item = {}
+                table.insert(list, item)
+                line = rest
+                indent = 999
+            end
+            local key, value = line:match("^%s*([%w_]+)%s*:%s*(.*)$")
+            if key then
+                local parsed = scalar(value)
+                if parsed == nil then
+                    list = {}
+                    root[key] = list
+                elseif indent > 0 and item then
+                    item[key] = parsed
+                else
+                    root[key] = parsed
+                    if indent == 0 then item = nil end
+                end
+            end
+        end
+    end
+    return root
+end
+
+packages["openmw.markup"] = {
+    loadYaml = function(path) return parseYaml(M.modRoot .. "/" .. path) end,
+    decodeYaml = function() return {} end,
+}
 M.shaderEnables, M.shaderDisables = 0, 0
 
 packages["openmw.postprocessing"] = {
@@ -218,6 +339,7 @@ packages["openmw.interfaces"] = {
         addTextKeyHandler = function(_, fn) table.insert(M.textKeyHandlers, fn) end,
         playBlendedAnimation = function() end,
     },
+    UI = { isHudVisible = function() return true end },
     Combat = { addOnHitHandler = function(fn) table.insert(M.hitHandlers, fn) end },
     MSS = {
         version = 1,
