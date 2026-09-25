@@ -58,6 +58,20 @@ I.Settings.registerPage {
     description = "~~ Kill slow motion, a flash on the kill, camera shake, hit markers and better sparks.",
 }
 
+-- The logo at the top of the page, as a group of one setting whose renderer
+-- (cjLogo, in menu.lua) draws it; the same trick as They Bleed's.
+I.Settings.registerGroup {
+    key = DEFS.settings.logo,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = '',
+    order = 0,
+    permanentStorage = false,
+    settings = {
+        { key = 'Logo', renderer = 'cjLogo', default = '', name = '' },
+    },
+}
+
 I.Settings.registerGroup {
     key = DEFS.settings.slowdown,
     page = 'CombatJuicePage',

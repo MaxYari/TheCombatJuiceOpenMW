@@ -203,6 +203,33 @@ I.Settings.registerRenderer('cjMarkerSelect', function(value, set, argument)
     }
 end)
 
+-- The logo at the top of the page ----------------------------------------------
+--
+-- Cropped out of its power-of-two texture to the rectangle tools/make_logo_texture.py
+-- printed, and drawn at half the size it was packed at, so the mips fit exactly.
+local LOGO_TEXTURE = ui.texture {
+    path = "textures/MaxYari/combat juice/logo.dds",
+    offset = util.vector2(65, 0),
+    size = util.vector2(892, 128),
+}
+local LOGO_WIDTH = 480
+
+I.Settings.registerRenderer('cjLogo', function()
+    return {
+        type = ui.TYPE.Flex,
+        -- the settings row puts renderers on the right; out-growing the row's
+        -- spacer centres the logo instead
+        external = { grow = 1000 },
+        props = { horizontal = true, align = ui.ALIGNMENT.Center, arrange = ui.ALIGNMENT.Center },
+        content = ui.content {
+            {
+                type = ui.TYPE.Image,
+                props = { resource = LOGO_TEXTURE, size = util.vector2(LOGO_WIDTH, LOGO_WIDTH * 128 / 892) },
+            },
+        },
+    }
+end)
+
 -- MarkerSizes' own row: only a way to put every marker back to its own size.
 -- The sizes themselves are set under each preview.
 I.Settings.registerRenderer('cjMarkerSizes', function(_, set)

@@ -49,6 +49,7 @@ return {
 
     -- Settings groups, also the names of their storage sections.
     settings = {
+        logo = "SettingsCombatJuiceLogo",   -- no settings, only the logo at the top of the page
         slowdown = "SettingsCombatJuiceSlowdown",
         camera = "SettingsCombatJuiceCamera",
         flash = "SettingsCombatJuiceFlash",

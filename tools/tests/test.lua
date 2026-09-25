@@ -71,7 +71,7 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 8, "seven settings groups from the player, one from global.lua")
+check(#stub.settingsGroups == 9, "eight settings groups from the player - one only the logo - and one from global.lua")
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -352,6 +352,9 @@ print("\n== hit marker previews in the settings ==")
 local menu = loadScript("menu.lua")
 local renderMarker = stub.renderers.cjMarkerSelect
 check(renderMarker ~= nil, "the menu script registers the marker picker")
+local logo = stub.renderers.cjLogo and stub.renderers.cjLogo()
+check(logo and logo.content[1].props.resource.path == "textures/MaxYari/combat juice/logo.dds",
+      "and the logo at the top of the page")
 local killColor = stub.settingsStore.SettingsCombatJuiceMarkers.KillMarkerColor
 local picker = renderMarker("faded_triangles", function() end,
     { items = hm.ids, colorKey = "KillMarkerColor" })
