@@ -12,7 +12,7 @@ Rapid-fire list of all the features:
 - Sparks that fly like actual sparks, and a quick flash of light where a blow lands.
 - Everything is adjustable and previewable in the mod settings.
 
-Requires **OpenMW 0.51+** and [Max Yari's Script Services (MSS)](https://www.nexusmods.com/morrowind/mods/60256).
+Requires **OpenMW 0.51+**!
 
 <p><a href="https://ko-fi.com/maxyari"><img src="imgs/head_like_a_hole_banner_left_half_bright148.webp" width="25.72%" align="top" alt="Support me on Ko-fi"></a><a href="https://ko-fi.com/maxyari"><img src="imgs/banner_right.png" width="73.88%" align="top" alt="Support me on Ko-fi"></a><br><a href="https://ko-fi.com/maxyari"><img src="imgs/banner_glow.png" width="99.6%" align="top" alt=""></a></p>
 
