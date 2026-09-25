@@ -21,6 +21,7 @@ local SettingsHelper = require(mp .. "settings_helper")
 local shaderUtils = require(mp .. "shader_utils")
 local hitmarkers = require(mp .. "hitmarkers")
 local soundFiles = require(mp .. "sounds")
+local enchantLight = require(mp .. "enchant_light")
 require(mp .. "settings")
 
 -- Max Yari's Script Services (MSS) is a required dependency: checked once, when this script loads.
@@ -35,6 +36,7 @@ local slowdownSettings = SettingsHelper:new(DEFS.settings.slowdown)
 local cameraSettings = SettingsHelper:new(DEFS.settings.camera)
 local flashSettings = SettingsHelper:new(DEFS.settings.flash)
 local effectSettings = SettingsHelper:new(DEFS.settings.effects)
+local enchantSettings = SettingsHelper:new(DEFS.settings.enchantLights)
 
 local selfObject = omwself.object
 
@@ -391,6 +393,30 @@ local function hitLight(pos)
         effectSettings.HitLightPower or 0.33)
 end
 
+-- For a blow that only took stamina: warmer, and dimmer than the hit light.
+local function staminaLight(pos)
+    if not effectSettings.StaminaLightEnabled then return end
+    spawnLight(pos, effectSettings.StaminaLightRadius or 70,
+        effectSettings.StaminaLightDuration or 0.15,
+        effectSettings.StaminaLightColor, { 1.0, 0.5, 0.15 },
+        effectSettings.StaminaLightPower or 0.3)
+end
+
+-- For a blow whose enchantment fired: its colour, at the hit light's reach.
+local function enchantedLight(pos, color)
+    spawnLight(pos, effectSettings.HitLightRadius or 90,
+        effectSettings.HitLightDuration or 0.2,
+        color, { 1.0, 1.0, 1.0 },
+        enchantSettings.EnchantLightPower or 0.6)
+end
+
+local function weaponInHand()
+    local ok, item = pcall(types.Actor.getEquipment, selfObject, types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    return ok and item or nil
+end
+
+local function enchantColor(key) return enchantSettings[key] end
+
 -- Where a blow landed --------------------------------------------------------
 --
 -- Impact Effects answers this by casting a ray from the camera through the
@@ -421,15 +447,32 @@ local function chestHeight(victim, enginePos)
     return victim.position.z + 50
 end
 
+-- The last resort, when no ray lands on them: somewhere on the side of their
+-- torso that faces the attacker. It used to go 85% of the way along the ray
+-- instead, which for a shot from far off put the light yards short of them.
+local TORSO_DEPTH, TORSO_WIDTH, TORSO_HEIGHT = 20, 8, 12
+
+local function torsoGuess(attacker, victim, height)
+    local toward = attacker.position - victim.position
+    toward = util.vector3(toward.x, toward.y, 0)
+    local length = toward:length()
+    toward = length > 1e-3 and toward * (1 / length) or util.vector3(0, 1, 0)
+    local side = util.vector3(-toward.y, toward.x, 0)
+    local scale = victim.scale or 1
+    local function jitter(size) return (math.random() * 2 - 1) * size * scale end
+    return util.vector3(victim.position.x, victim.position.y, height)
+        + toward * (TORSO_DEPTH * scale)
+        + side * jitter(TORSO_WIDTH)
+        + util.vector3(0, 0, jitter(TORSO_HEIGHT))
+end
+
 -- A ray from the attacker to the victim, level at that height.
 local function rayAtVictim(attacker, victim, height)
     local from = util.vector3(attacker.position.x, attacker.position.y, height)
     local to = util.vector3(victim.position.x, victim.position.y, height)
     local ok, res = pcall(nearby.castRay, from, to, { ignore = attacker })
     if ok and res.hit and res.hitObject == victim then return res.hitPos end
-    -- Hit nothing, or something else: put it just short of them rather than
-    -- inside them.
-    return from + (to - from) * 0.85
+    return torsoGuess(attacker, victim, height)
 end
 
 -- Down the camera, through the middle of the screen. Only the player has one,
@@ -443,10 +486,12 @@ local function rayFromCamera(victim)
     return nil
 end
 
-local function impactPoint(attacker, victim, enginePos)
+-- ranged: a projectile's hit, whose engine position is where it struck.
+local function impactPoint(attacker, victim, enginePos, ranged)
     if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
         return enginePos
     end
+    if ranged and enginePos then return enginePos end
     if attacker == selfObject then
         local aimed = rayFromCamera(victim)
         if aimed then return aimed end
@@ -509,8 +554,11 @@ local function updateReticle()
     if pcall(reticle.setAlphaMultiplier, DEFS.modId, alpha) then reticleAlpha = alpha end
 end
 
-local function playMarker(lethal, weak)
+-- stamina: the blow took stamina and no health - the hit marker, in its own
+-- colour. Anything that took health is an ordinary hit and wins.
+local function playMarker(lethal, weak, stamina)
     if not markerSettings.MarkersEnabled then return end
+    if stamina and not markerSettings.StaminaMarkers then return end
 
     local opacity = markerSettings.MarkerOpacity or 1
     if weak and not lethal then opacity = markerSettings.WeakMarkerOpacity or 0 end
@@ -522,7 +570,9 @@ local function playMarker(lethal, weak)
         -- Each marker's own size, set under its preview in the settings.
         scale = sizes and sizes[id] or 1,
         alpha = opacity,
-        color = lethal and markerSettings.KillMarkerColor or markerSettings.MarkerColor,
+        color = lethal and markerSettings.KillMarkerColor
+            or stamina and markerSettings.StaminaMarkerColor
+            or markerSettings.MarkerColor,
         overReticle = lethal,
     })
     -- Now rather than on the next update, so the two never show together.
@@ -551,13 +601,22 @@ local function onDamageDealt(data)
     playMarker(data.lethal, data.weak)
 end
 
--- Sent by the actor we hit, from its own I.Combat hit handler. The shake waits
--- for the damage event, which knows how hard the blow landed; this only has to
--- light it.
+-- Sent by the actor we hit, from its own I.Combat hit handler. The shake and
+-- the marker wait for the damage event, which knows how hard the blow landed;
+-- this only has to light it. A blow that took no health never gets a damage
+-- event, so a stamina-only one is marked here as well.
 local function onAttackLanded(data)
     if not data.successful then return end
-    if not sparkedRecently() then
-        hitLight(impactPoint(selfObject, data.victim, data.hitPos))
+    if data.staminaOnly then playMarker(false, false, true) end
+    -- An enchantment that fired lights in its own colour, sparks or not: the
+    -- discharge is a thing of its own.
+    local enchanted = enchantSettings.EnchantLightEnabled
+        and enchantLight.hitColor(data, weaponInHand(), now(), enchantColor)
+    if enchanted then
+        enchantedLight(impactPoint(selfObject, data.victim, data.hitPos, data.ranged), enchanted)
+    elseif not sparkedRecently() then
+        local light = data.staminaOnly and staminaLight or hitLight
+        light(impactPoint(selfObject, data.victim, data.hitPos, data.ranged))
     end
 end
 
@@ -576,6 +635,23 @@ end)
 -- happened, and what was hit, without doing any of that work again - and its
 -- hit position is the contact point, not the victim's origin.
 
+-- Impact Effects plays nothing for a swing that is not a blade, a blunt, an
+-- axe or a spear - fists above all - but tells its handlers about it all the
+-- same. Those do not spark here either: a punch on stone is not a sword on it.
+local SPARKING_TYPES = {}
+for _, name in ipairs({ "ShortBladeOneHand", "LongBladeOneHand", "LongBladeTwoHand", "BluntOneHand",
+    "BluntTwoClose", "BluntTwoWide", "SpearTwoWide", "AxeOneHand", "AxeTwoHand" }) do
+    local weaponType = types.Weapon.TYPE[name]
+    if weaponType then SPARKING_TYPES[weaponType] = true end
+end
+
+local function swingSparks()
+    local item = weaponInHand()
+    if not item or not types.Weapon.objectIsInstance(item) then return false end
+    local ok, record = pcall(types.Weapon.record, item)
+    return ok and record ~= nil and SPARKING_TYPES[record.type] == true
+end
+
 local function onImpact(o, var)
     local material = var.material
     local pos = var.hitPos
@@ -591,6 +667,8 @@ local function onImpact(o, var)
     -- docs/impact-effects-unarmored.md). It has no sound of its own and would
     -- otherwise fall through to a dirt thud, so keep it quiet.
     if material == "Unarmored" then var.noSound = true end
+
+    if not swingSparks() then return end
 
     if sparks or mediumArmour then
         lastSparkAt = now()
@@ -634,6 +712,7 @@ local function onUpdate(dt)
     setUpImpactHooks()
     hitmarkers.setVisible(I.UI.isHudVisible())
     hitmarkers.update(dt)
+    if enchantSettings.EnchantLightEnabled then enchantLight.sample(weaponInHand(), now()) end
     updateReticle()
 end
 

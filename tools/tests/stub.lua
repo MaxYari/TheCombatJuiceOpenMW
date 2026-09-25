@@ -20,6 +20,8 @@ M.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
 
 M.subscribers = {}
 M.contentFiles = {} -- [name] = false to leave one out
+M.enchantments = {}   -- [id] = { type, effects = { { id, effect = { school, color } } } }
+M.weaponRecords = {}  -- [recordId] = { type, enchant }
 
 -- Storage sections notify their subscribers on a write, the way the engine's do:
 -- that is how the mod's settings cache learns a setting changed.
@@ -126,6 +128,12 @@ packages["openmw.core"] = {
     getSimulationTime = function() return M.realTime end,
     getGMST = function() return 1 end,
     contentFiles = { has = function(name) return M.contentFiles[name] ~= false end },
+    magic = {
+        EFFECT_TYPE = { FireDamage = "firedamage", FrostDamage = "frostdamage", ShockDamage = "shockdamage",
+                        Poison = "poison", FortifyAttribute = "fortifyattribute", DamageHealth = "damagehealth" },
+        ENCHANTMENT_TYPE = { CastOnce = 0, CastOnStrike = 1, CastOnUse = 2, ConstantEffect = 3 },
+        enchantments = { records = M.enchantments },
+    },
     sendGlobalEvent = function(name, data)
         table.insert(M.sentGlobalEvents, { name = name, data = data })
     end,
@@ -215,9 +223,13 @@ packages["openmw.types"] = {
     Player = { objectIsInstance = function(o) return o ~= nil and o.kind == "player" end },
     Weapon = {
         objectIsInstance = function(o) return o ~= nil and o.kind == "weapon" end,
-        record = function(o) return { type = o and o.weaponType or 0 } end,
-        TYPE = { ShortBladeOneHand = 0, LongBladeOneHand = 1, MarksmanBow = 9,
-                 MarksmanCrossbow = 10, MarksmanThrown = 11 },
+        record = function(o)
+            if type(o) == "string" then return M.weaponRecords[o] end
+            return { type = o and o.weaponType or 0 }
+        end,
+        TYPE = { ShortBladeOneHand = 0, LongBladeOneHand = 1, LongBladeTwoHand = 2, BluntOneHand = 3,
+                 BluntTwoClose = 4, BluntTwoWide = 5, SpearTwoWide = 6, AxeOneHand = 7, AxeTwoHand = 8,
+                 MarksmanBow = 9, MarksmanCrossbow = 10, MarksmanThrown = 11, Arrow = 12, Bolt = 13 },
     },
     Actor = {
         STANCE = { Nothing = 0, Weapon = 1, Spell = 2 },
@@ -252,6 +264,7 @@ packages["openmw.types"] = {
     Light = {
         createRecordDraft = function(t) return t end,
     },
+    Item = { itemData = function(o) return { enchantmentCharge = o.charge } end },
     Armor = { objectIsInstance = function(o) return o ~= nil and o.kind == "armor" end },
     Clothing = { objectIsInstance = function(o) return o ~= nil and o.kind == "clothing" end },
 }

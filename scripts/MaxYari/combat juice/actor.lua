@@ -34,10 +34,21 @@ I.Combat.addOnHitHandler(function(attack)
     local attacker = attack.attacker
     if not attacker or not types.Player.objectIsInstance(attacker) then return end
     if attack.successful then lastHitByPlayer = core.getRealTime() end
+    -- A blow that only takes stamina: fists, unless the victim is down or the
+    -- attacker is a werewolf. Read off the attack itself, so nobody's fatigue
+    -- has to be watched - which is also why a stamina spell shows nothing.
+    local damage = attack.damage or {}
     attacker:sendEvent(DEFS.e.AttackLanded, {
         victim = selfObject,
         successful = attack.successful and true or false,
         hitPos = attack.hitPos,
+        staminaOnly = attack.successful and (damage.fatigue or 0) > 0 and (damage.health or 0) <= 0
+            or false,
+        -- What struck, for the colour of the light if it was enchanted.
+        weapon = attack.weapon and attack.weapon.recordId,
+        ammo = attack.ammo,
+        -- A projectile's hit position is where it actually struck; a melee one's is not.
+        ranged = tostring(attack.sourceType):lower() == "ranged",
     })
 end)
 

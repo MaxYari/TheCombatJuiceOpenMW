@@ -71,7 +71,7 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 7, "six settings groups from the player, one from global.lua")
+check(#stub.settingsGroups == 8, "seven settings groups from the player, one from global.lua")
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -235,6 +235,28 @@ check(stub.lastRay and math.abs(stub.lastRay.from.z - stub.lastRay.to.z) < 1e-9,
 check(stub.lastRay and stub.lastRay.from.z > victim.position.z + 40,
       "which is well above the ground")
 
+local arrowPos = stub.vec3(3, 97, 71)
+stub.sentGlobalEvents = {}
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = arrowPos, ranged = true })
+lights = sentLights()
+check(#lights == 1 and lights[1].pos == arrowPos, "an arrow's hit is lit where the arrow struck")
+
+stub.rayResult = { hit = false }
+local castRayBefore = stub.packages["openmw.nearby"].castRay
+stub.packages["openmw.nearby"].castRay = function() return { hit = false } end
+local far = true
+for _ = 1, 20 do
+    stub.realTime = stub.realTime + 1
+    stub.sentGlobalEvents = {}
+    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
+    local p = sentLights()[1].pos
+    local dx, dy = p.x - victim.position.x, p.y - victim.position.y
+    -- the player stands at the origin, the victim 100 units along y
+    far = far and dy < 0 and math.sqrt(dx * dx + dy * dy) < 25 and p.z > victim.position.z + 40
+end
+check(far, "with no ray landing on them, it goes on the side of their torso facing the attacker")
+stub.packages["openmw.nearby"].castRay = castRayBefore
+
 -- Being hit lights nothing: it would be lighting the player's own face.
 calls = 1
 stub.sentGlobalEvents = {}
@@ -253,6 +275,7 @@ check(#sentLights() == 0, "a miss lights nothing")
 
 -- Sparks light their own impact, so the warm one keeps out of the way.
 local hitPos = stub.vec3(10, 20, 30)
+stub.equipped = { kind = "weapon", weaponType = 1 } -- a sword: only a swung weapon sparks
 stub.sentGlobalEvents = {}
 stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
 lights = sentLights()
@@ -395,6 +418,95 @@ check(crossPart.props.alpha < 1 and crossPart.props.alpha > 0, "and then fades")
 setting("Markers", "MarkerSizes", {})
 for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
 
+print("\n== blows that take only stamina ==")
+local markerStore = stub.settingsStore.SettingsCombatJuiceMarkers
+local effectStore = stub.settingsStore.SettingsCombatJuiceEffects
+local function blow(staminaOnly)
+    stub.realTime = stub.realTime + 1 -- clear of any spark's light
+    stub.sentGlobalEvents = {}
+    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true,
+        staminaOnly = staminaOnly, hitPos = stub.vec3(0, 100, 50) })
+    return sentLights()[1]
+end
+local light = blow(true)
+player.engineHandlers.onUpdate(0.05) -- the triangles spring out from nothing
+local triangle = stub.hud.layout.content.faded_triangles.content[1]
+check(triangle.props.color == markerStore.StaminaMarkerColor and triangle.props.alpha > 0,
+      "shows the hit marker, in the stamina colour")
+check(light and light.r == effectStore.StaminaLightColor.r and light.g == effectStore.StaminaLightColor.g
+      and light.power < effectStore.HitLightPower and light.radius < effectStore.HitLightRadius,
+      "and a warm light, dimmer and smaller than the hit light")
+light = blow(false)
+check(light and light.r == effectStore.HitLightColor.r and light.g == effectStore.HitLightColor.g,
+      "a blow that took health gets the ordinary light")
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(triangle.props.color == markerStore.MarkerColor, "and the ordinary marker, from its damage")
+setting("Markers", "StaminaMarkers", false)
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+blow(true)
+player.engineHandlers.onUpdate(0.05)
+check(triangle.props.alpha == 0, "stamina markers can be switched off on their own")
+setting("Markers", "StaminaMarkers", true)
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+
+print("\n== enchanted hit lights ==")
+local enchantStore = stub.settingsStore.SettingsCombatJuiceEnchantLights
+local function effect(id, school, color) return { id = id, effect = { school = school, color = color } } end
+local violet = { r = 0.62, g = 0.22, b = 0.85 }
+stub.enchantments.fire_en = { type = 1, effects = { effect("firedamage", "destruction", { r = 1, g = 0.5, b = 0.2 }) } }
+stub.enchantments.frost_en = { type = 1, effects = { effect("frostdamage", "destruction", { r = 0.5, g = 0.6, b = 0.9 }) } }
+stub.enchantments.fortify_en = { type = 1, effects = { effect("fortifyattribute", "restoration", { r = 0.5, g = 0.5, b = 0.75 }) } }
+stub.enchantments.venom_en = { type = 1, effects = { effect("h2h_venom", "destruction", violet),
+                                                     effect("firedamage", "destruction", {}) } }
+stub.enchantments.aura_en = { type = 3, effects = { effect("firedamage", "destruction", {}) } }
+stub.weaponRecords.fire_sword = { type = 1, enchant = "fire_en" }
+stub.weaponRecords.rose = { type = 0, enchant = "venom_en" }
+stub.weaponRecords.aura_blade = { type = 1, enchant = "aura_en" }
+stub.weaponRecords.bow = { type = 9, enchant = "" }
+stub.weaponRecords.frost_arrow = { type = 12, enchant = "frost_en" }
+stub.weaponRecords.star = { type = 11, enchant = "fortify_en" }
+local function same(light, color) return light and light.r == color.r and light.g == color.g and light.b == color.b end
+local function strike(weapon, ammo)
+    stub.realTime = stub.realTime + 1
+    stub.sentGlobalEvents = {}
+    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, staminaOnly = false,
+        hitPos = stub.vec3(0, 100, 50), weapon = weapon, ammo = ammo })
+    return sentLights()[1]
+end
+local heldBefore = stub.equipped
+local sword = { kind = "weapon", recordId = "fire_sword", charge = 100 }
+stub.equipped = sword
+player.engineHandlers.onUpdate(0.016) -- the charge is read
+sword.charge = 90                     -- and the blow spends some
+local light = strike("fire_sword")
+check(same(light, enchantStore.EnchantFireColor) and light.power == enchantStore.EnchantLightPower,
+      "a fire enchantment that fired lights the hit in the fire colour")
+check(same(strike("fire_sword"), effectStore.HitLightColor),
+      "a blow it had no charge to fire on is lit as a plain hit")
+sword.charge = 80
+check(same(strike("fire_sword"), enchantStore.EnchantFireColor),
+      "the charge drop is seen as the hit is reported, even before an update reads it")
+check(same(strike("bow", "frost_arrow"), enchantStore.EnchantFrostColor), "enchanted arrows always fire")
+check(same(strike("star"), enchantStore.EnchantRestorationColor),
+      "and so do thrown weapons; an effect that is no element takes its school's colour")
+local rose = { kind = "weapon", recordId = "rose", charge = 160 }
+stub.equipped = rose
+player.engineHandlers.onUpdate(0.016)
+rose.charge = 144
+check(same(strike("rose"), violet), "a mod's own magic effect lights in the colour on its own record")
+local aura = { kind = "weapon", recordId = "aura_blade", charge = 100 }
+stub.equipped = aura
+player.engineHandlers.onUpdate(0.016)
+aura.charge = 90
+check(same(strike("aura_blade"), effectStore.HitLightColor), "an enchantment that is not cast on strike does nothing")
+stub.equipped = sword
+player.engineHandlers.onUpdate(0.016)
+setting("EnchantLights", "EnchantLightEnabled", false)
+sword.charge = 70
+check(same(strike("fire_sword"), effectStore.HitLightColor), "and all of it can be switched off")
+setting("EnchantLights", "EnchantLightEnabled", true)
+stub.equipped = heldBefore
+
 print("\n== the reticle under a kill marker ==")
 local interfaces = stub.packages["openmw.interfaces"]
 local reticleCalls = {}
@@ -451,6 +563,31 @@ setting("MarkerSounds", "MeleeSound", true)
 stub.sentSounds = {}
 player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
 check(#stub.sentSounds == 1, "once switched on, melee plays it")
+
+print("\n== fists do not spark ==")
+local swordBefore = stub.equipped
+stub.equipped = nil
+local function punch(handlers, target, material)
+    stub.realTime = stub.realTime + 1
+    stub.sentGlobalEvents = {}
+    local var = { material = material, hitPos = hitPos }
+    handlers[1](target, var)
+    local vfx = 0
+    for _, ev in ipairs(stub.sentGlobalEvents) do if ev.name == "SpawnVfx" then vfx = vfx + 1 end end
+    return vfx, #sentLights(), var
+end
+local vfx, lit = punch(stub.impactObjectHandlers, stub.newObject("static"), "Stone")
+check(vfx == 0 and lit == 0, "a punch on stone throws no sparks and no spark light")
+vfx, lit = punch(stub.impactObjectHandlers, stub.newObject("static"), "Metal")
+check(vfx == 0 and lit == 0, "nor on bare metal")
+vfx, lit = punch(stub.impactActorHandlers, stub.newObject("npc"), "ParryArmorHeavy")
+check(vfx == 0 and lit == 0, "nor on heavy armour")
+local _, _, var = punch(stub.impactActorHandlers, stub.newObject("npc"), "Unarmored")
+check(var.noSound == true, "a bare body part is still kept quiet")
+stub.equipped = { kind = "weapon", weaponType = 9 }
+vfx = punch(stub.impactObjectHandlers, stub.newObject("static"), "Metal")
+check(vfx == 0, "and a bow held in hand does not count as a blade")
+stub.equipped = swordBefore
 
 print("\n== spark variety ==")
 local function sentVfx()
@@ -554,6 +691,19 @@ local told
 for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_AttackLanded" then told = ev end end
 check(told ~= nil and told.target == stub.player, "the victim tells the attacking player the hit landed")
 check(told and told.data.hitPos ~= nil, "and where it landed, for the light")
+local function landed(attack)
+    stub.sentObjectEvents = {}
+    attack.attacker = stub.player
+    stub.hitHandlers[1](attack)
+    for _, ev in ipairs(stub.sentObjectEvents) do
+        if ev.name == "CJ_AttackLanded" then return ev.data end
+    end
+end
+check(landed({ successful = true, damage = { fatigue = 12 } }).staminaOnly == true,
+      "a punch that takes only stamina says so")
+check(landed({ successful = true, damage = { health = 4, fatigue = 12 } }).staminaOnly == false,
+      "one that takes health as well is an ordinary hit")
+check(landed({ successful = false, damage = { fatigue = 12 } }).staminaOnly == false, "and a miss is neither")
 
 stub.sentObjectEvents = {}
 stub.damageListeners[1]({ actor = npc, previousHealth = 10, health = 0, baseHealth = 40,

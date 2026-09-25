@@ -151,10 +151,66 @@ I.Settings.registerGroup {
             name = 'Other Hit Light Colour',
         },
 
+        checkbox('StaminaLightEnabled', 'Light Flash On Stamina Hits', true,
+            "For blows that take only stamina - fists, mostly. A blow that takes health gets the one above."),
+        number('StaminaLightRadius', 'Stamina Hit Light Radius', 70, 5, nil),
+        number('StaminaLightDuration', 'Stamina Hit Light Duration', 0.15, 0.01, nil),
+        number('StaminaLightPower', 'Stamina Hit Light Power', 0.3, nil, nil),
+        {
+            key = 'StaminaLightColor',
+            renderer = 'color',
+            default = util.color.rgb(1.0, 0.5, 0.15),
+            name = 'Stamina Hit Light Colour',
+        },
+
         checkbox('SparkVariety', 'Vary The Spark Bursts', true,
             "Picks one of several baked bursts per hit instead of the same one."),
         checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', true,
             "Impact Effects gives medium armour a sound but no sparks; this fills that in."),
+    },
+}
+
+local function color(key, name, r, g, b, description)
+    return { key = key, renderer = 'color', default = util.color.rgb(r, g, b), name = name, description = description }
+end
+
+-- Colours for blows whose cast-on-strike enchantment fired. The elements take
+-- their own; everything else its school's. Poison is the median colour of the
+-- effect burning on the victim (its hit visual), fire halfway between that
+-- visual's red glow and its orange flames, since the glow alone is the plain hit
+-- light's red. Frost and shock are picked to read as ice and lightning: the
+-- game's own would make shock the paler of the two. The school colours are the
+-- game's too:
+-- the median colour of the particles on the caster's hand while a spell of that
+-- school is cast (each school's magic_cast_*.nif, its textures under the tints
+-- its materials give them), brightened until its strongest channel is full, so
+-- that the power setting alone decides how bright a light is.
+I.Settings.registerGroup {
+    key = DEFS.settings.enchantLights,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = 'Enchanted Hit Lights',
+    order = 4.5,
+    permanentStorage = true,
+    settings = {
+        checkbox('EnchantLightEnabled', 'Colour Hit Lights By Enchantment', true,
+            "When a blow's cast-on-strike enchantment actually fires - it has the charge - the hit " ..
+            "light takes its colour, sparks or not. The main elements have their own below, anything " ..
+            "else its school's, and a mod's own magic effect brings its own. Radius and duration are " ..
+            "the hit light's."),
+        number('EnchantLightPower', 'Enchanted Hit Light Power', 0.6, nil, nil),
+        color('EnchantFireColor', 'Fire', 1.0, 0.28, 0.15,
+            "Halfway between the red glow and the orange flames of fire burning on a body."),
+        color('EnchantFrostColor', 'Frost', 0.72, 0.85, 1.0),
+        color('EnchantShockColor', 'Shock', 0.35, 0.55, 1.0),
+        color('EnchantPoisonColor', 'Poison', 0.69, 1.0, 0.2),
+        color('EnchantAlterationColor', 'Alteration', 0.97, 0.66, 1),
+        color('EnchantConjurationColor', 'Conjuration', 1, 0.87, 0.59),
+        color('EnchantDestructionColor', 'Destruction', 1, 0.46, 0.1,
+            "For destruction effects other than the four elements above."),
+        color('EnchantIllusionColor', 'Illusion', 0.24, 1, 0.19),
+        color('EnchantMysticismColor', 'Mysticism', 0.81, 0.68, 1),
+        color('EnchantRestorationColor', 'Restoration', 0.55, 0.62, 1),
     },
 }
 
@@ -192,6 +248,16 @@ I.Settings.registerGroup {
             renderer = 'color',
             default = util.color.rgb(0.91, 0.145, 0.196),
             name = 'Kill Marker Colour',
+        },
+        checkbox('StaminaMarkers', 'Show Markers On Stamina Hits', true,
+            "The hit marker, in its own colour, for blows that take only stamina - fists, mostly. " ..
+            "A blow that takes health as well shows the ordinary one."),
+        {
+            key = 'StaminaMarkerColor',
+            renderer = 'color',
+            default = util.color.rgb(0.09, 0.64, 0.26),
+            name = 'Stamina Hit Marker Colour',
+            description = "Morrowind's fatigue-bar green, a touch brighter.",
         },
     },
 }

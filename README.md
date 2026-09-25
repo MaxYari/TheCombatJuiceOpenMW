@@ -57,6 +57,8 @@ Have fun!
 - To get Impact Effects' original sparks back, delete the `meshes/e/impact` folder from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).
 - Every hit marker keeps its own size - set it with - and + under its preview in the settings.
+- When an enchanted weapon's cast-on-strike enchantment actually fires, the hit lights up in its colour: fire, frost, shock and poison have their own, anything else uses its school of magic's colour, and magic effects added by other mods bring their own colour.
+- Blows that take only stamina (punches, mostly) get the hit marker in green and a dimmer, warm orange light. A blow that takes health as well gets the ordinary ones. Stamina-draining spells don't show anything.
 - With [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) installed, its reticle fades out while a kill marker drawn over the crosshair is showing, and fades back in with it. This needs a Dynamic Reticle newer than 1.4.1.
 - Hit markers are simple definition files in the `hitmarkers/` folder. To add your own, copy one of them, point it at your textures, and it will show up in the settings (this works from other mods too).
 

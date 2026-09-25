@@ -53,6 +53,7 @@ return {
         camera = "SettingsCombatJuiceCamera",
         flash = "SettingsCombatJuiceFlash",
         effects = "SettingsCombatJuiceEffects",
+        enchantLights = "SettingsCombatJuiceEnchantLights",
         markers = "SettingsCombatJuiceMarkers",
         markerSounds = "SettingsCombatJuiceMarkerSounds",
         looseGear = "SettingsCombatJuiceLooseGear", -- global storage, see settings_global.lua
