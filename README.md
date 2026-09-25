@@ -10,7 +10,7 @@ Rapid-fire list of all the features:
 - Hit markers and hit sounds, specifically to enhance the feel of ranged/magic hits (previously part of the [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) mod, now they're not).
 - Held weapon, helmet and boots flying off on kill (and optionally all the other equipment/inventory as well, if you like loot piñatas).
 - Sparks that fly like actual sparks, and a quick flash of light where a blow lands.
-- Everything is adjustable and previewable in the mod settings.
+- Everything is adjustable and previewable in the mod settings..
 
 Requires **OpenMW 0.51+**!
 
