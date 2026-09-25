@@ -1,5 +1,7 @@
 # ⚔︎ The Combat Juice
 
+![The Combat Juice](imgs/nexus/logo.png)
+
 A layer of subtle "oomph" lovingly smeared all over TES III combat. Does not alter any gameplay mechanics - purely a visual and auditory satisfactorium. If you are sure that Morrowind's combat mechanics are trash - try this before looking for mods to "overhaul" them.
 
 Rapid-fire list of all the features:
