@@ -55,6 +55,7 @@ Have fun!
 
 - Gear flying off on kill moves it out of the corpse and onto the floor, so you pick it up from the ground instead of looting the body. Each item (weapon, helmet, boots, other worn pieces, inventory) has its own chance in the settings - set a chance to 0 to leave that item on the corpse.
 - To get Impact Effects' original sparks back, delete the `meshes/e/impact` folder from this mod.
+- With [N'Garde](https://www.nexusmods.com/morrowind/mods/58658) installed, its weapon clashes throw The Combat Juice's sparks too, as long as The Combat Juice loads after it. To keep N'Garde's own, delete `meshes/e/spark.nif` from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).
 - Every hit marker keeps its own size - set it with - and + under its preview in the settings.
 - When an enchanted weapon's cast-on-strike enchantment actually fires, the hit lights up in its colour: fire, frost, shock and poison have their own, anything else uses its school of magic's colour, and magic effects added by other mods bring their own colour.

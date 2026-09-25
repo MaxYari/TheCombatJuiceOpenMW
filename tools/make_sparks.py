@@ -78,8 +78,12 @@ FAMILIES = {
         fast_count=(2, 4),
     ),
     # Parry / weapon on armour. Impact Effects also scales this one to 0.5.
+    # N'Garde plays meshes/e/spark.nif for its weapon clashes, so a copy of
+    # this burst goes there too and its clashes throw these sparks - provided
+    # this mod loads after it.
     "parry": dict(
         replaces="parrySpark.nif",
+        also=["meshes/e/spark.nif"],
         variants=4,
         seed=760921,
         streaks=(4, 7),
@@ -356,6 +360,9 @@ def main():
             stream.save(path)
             print(f"wrote {path.name:<20} {count} streaks"
                   + (f" + {fast} thrown hard" if fast else ""))
+            for also in cfg.get("also", []) if n == 1 else []:
+                stream.save(root / also)
+                print(f"wrote {Path(also).name:<20} (a copy of {cfg['replaces']})")
 
     rng = random.Random(CLUSTERS["seed"])
     for n in range(1, CLUSTERS["count"] + 1):
