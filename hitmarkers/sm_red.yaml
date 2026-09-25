@@ -1,8 +1,0 @@
-name: Stupid-Metal Red
-style: fade
-recolour: false
-size: [100, 100]
-alpha: 1.0
-decay: 8
-parts:
-  - texture: textures/MaxYari/combat juice/hitmarkers/sm_red.png

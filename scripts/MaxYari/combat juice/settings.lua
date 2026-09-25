@@ -32,6 +32,19 @@ local function select(key, name, default, items, description)
     }
 end
 
+-- A hit marker picker with a preview of the marker, drawn in `colorKey`'s
+-- colour. The renderer lives in menu.lua.
+local function markerSelect(key, name, default, colorKey, description)
+    return {
+        key = key,
+        renderer = 'cjMarkerSelect',
+        default = default,
+        argument = { items = hitmarkers.ids, colorKey = colorKey },
+        name = name,
+        description = description,
+    }
+end
+
 -- Which kills an effect takes. A kill can satisfy several at once; each effect
 -- names the loosest it accepts.
 local function trigger(key, name, default, description)
@@ -57,14 +70,14 @@ I.Settings.registerGroup {
 
         trigger('SmallSlowdownTrigger', 'Short Slow Motion On', DEFS.TRIGGER.EveryKill),
         number('SmallSlowdownChance', 'Short Slow Motion Chance', 1, 0, 1),
-        number('SmallSlowdownScale', 'Short Slow Motion Time Scale', 0.45, 0.01, 1),
+        number('SmallSlowdownScale', 'Short Slow Motion Time Scale', 0.3, 0.01, 1),
         number('SmallSlowdownDuration', 'Short Slow Motion Duration', 1.0, 0.05, nil,
             "Seconds of real time, easing included."),
 
         trigger('BigSlowdownTrigger', 'Long Slow Motion On', DEFS.TRIGGER.LongEncounterEnd),
         number('BigSlowdownChance', 'Long Slow Motion Chance', 1, 0, 1),
         number('BigSlowdownScale', 'Long Slow Motion Time Scale', 0.2, 0.01, 1),
-        number('BigSlowdownDuration', 'Long Slow Motion Duration', 1.5, 0.05, nil,
+        number('BigSlowdownDuration', 'Long Slow Motion Duration', 2.0, 0.05, nil,
             "Seconds of real time. When a kill qualifies for both, the longer one plays."),
 
         number('LongEncounterSeconds', 'A Long Fight Is This Many Seconds', 20, 0, nil),
@@ -99,7 +112,7 @@ I.Settings.registerGroup {
     order = 3,
     permanentStorage = true,
     settings = {
-        select('FlashOn', 'Kill Flash On', DEFS.FLASH_ON.Short, DEFS.FLASH_ON_ITEMS,
+        select('FlashOn', 'Kill Flash On', DEFS.FLASH_ON.Long, DEFS.FLASH_ON_ITEMS,
             "Which slow motion it rides. It runs for as long as that slow motion does."),
         number('FlashStrength', 'Kill Flash Strength', 1.0, 0, nil,
             "The look itself is tuned in the post processing HUD (F2)."),
@@ -154,9 +167,9 @@ I.Settings.registerGroup {
     permanentStorage = true,
     settings = {
         checkbox('MarkersEnabled', 'Show Hit Markers', true),
-        select('HitMarker', 'Hit Marker', 'faded_triangles', hitmarkers.ids,
+        markerSelect('HitMarker', 'Hit Marker', 'faded_triangles', 'MarkerColor',
             "Every definition in hitmarkers/ is listed here, from this mod or any other."),
-        select('KillMarker', 'Kill Marker', 'cross', hitmarkers.ids),
+        markerSelect('KillMarker', 'Kill Marker', 'sm_skull', 'KillMarkerColor'),
         number('MarkerScale', 'Marker Size', 0.75, 0.05, nil),
         number('MarkerOpacity', 'Marker Opacity', 1.0, 0, 1),
         number('WeakMarkerOpacity', 'Glancing Hit Opacity', 0.0, 0, 1,
@@ -196,7 +209,7 @@ I.Settings.registerGroup {
     order = 6,
     permanentStorage = true,
     settings = {
-        soundSelect('HitMarkerSound', 'Hit Sound', 'fps_meaty_hit', "Press play to hear it."),
+        soundSelect('HitMarkerSound', 'Hit Sound', 'bass_stab', "Press play to hear it."),
         number('HitMarkerVolume', 'Hit Volume', 2.0, 0, nil),
         soundSelect('DeathMarkerSound', 'Kill Sound', 'bass_stab'),
         number('DeathMarkerVolume', 'Kill Volume', 2.0, 0, nil),

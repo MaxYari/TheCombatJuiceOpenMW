@@ -19,6 +19,7 @@ M.skipAnimCalls = 0
 M.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
 
 M.subscribers = {}
+M.contentFiles = {} -- [name] = false to leave one out
 
 -- Storage sections notify their subscribers on a write, the way the engine's do:
 -- that is how the mod's settings cache learns a setting changed.
@@ -33,13 +34,28 @@ local function vec2(x, y)
     return v
 end
 
+local vec3Methods = {}
 local function vec3(x, y, z)
     local v = { x = x, y = y, z = z }
     setmetatable(v, { __add = function(a, b) return vec3(a.x + b.x, a.y + b.y, a.z + b.z) end,
                       __sub = function(a, b) return vec3(a.x - b.x, a.y - b.y, a.z - b.z) end,
-                      __mul = function(a, k) return vec3(a.x * k, a.y * k, a.z * k) end })
+                      __mul = function(a, k)
+                          if type(k) == "table" then return a.x * k.x + a.y * k.y + a.z * k.z end
+                          return vec3(a.x * k, a.y * k, a.z * k)
+                      end,
+                      __index = vec3Methods })
     return v
 end
+function vec3Methods:length() return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z) end
+function vec3Methods:normalize()
+    local l = self:length()
+    return vec3(self.x / l, self.y / l, self.z / l)
+end
+
+-- Rotations are only ever composed and applied to "forward" here, so identity
+-- is enough.
+local transform = setmetatable({}, { __mul = function(a) return a end })
+transform.apply = function(_, v) return v end
 
 local function makeSection(tbl, name)
     tbl[name] = tbl[name] or {}
@@ -73,6 +89,7 @@ function M.newObject(kind, opts)
         kind = kind,
         cell = opts.cell or { name = "TestCell" },
         position = opts.position or vec3(0, 0, 0),
+        rotation = transform,
         scale = opts.scale or 1,
         dead = false,
         enabled = true,
@@ -82,7 +99,7 @@ function M.newObject(kind, opts)
     function o:sendEvent(name, data)
         table.insert(M.sentObjectEvents, { target = self, name = name, data = data })
     end
-    function o:teleport(cell, pos) self.cell = cell; self.pos = pos; self.enabled = true end
+    function o:teleport(cell, pos) self.cell = cell; self.pos = pos; self.enabled = true; self.teleported = true end
     table.insert(M.allObjects, o)
     function o:remove() self.valid = false end
     return o
@@ -101,7 +118,7 @@ packages["openmw.core"] = {
     getRealTime = function() return M.realTime end,
     getSimulationTime = function() return M.realTime end,
     getGMST = function() return 1 end,
-    contentFiles = { has = function() return true end },
+    contentFiles = { has = function(name) return M.contentFiles[name] ~= false end },
     sendGlobalEvent = function(name, data)
         table.insert(M.sentGlobalEvents, { name = name, data = data })
     end,
@@ -120,6 +137,11 @@ packages["openmw.util"] = {
     },
     clamp = function(v, a, b) return math.max(a, math.min(b, v)) end,
     vector3 = vec3,
+    transform = {
+        rotateX = function() return transform end,
+        rotateY = function() return transform end,
+        rotateZ = function() return transform end,
+    },
 }
 packages["openmw.storage"] = {
     playerSection = function(name) return makeSection(M.settingsStore, name) end,
@@ -130,8 +152,8 @@ packages["openmw.async"] = setmetatable({}, { __index = function(_, k)
     if k == "callback" then return function(_, fn) return fn end end
 end })
 local function uiElement(layout)
-    local el = { layout = layout }
-    function el:update() end
+    local el = { layout = layout, updates = 0 }
+    function el:update() self.updates = self.updates + 1 end
     function el:destroy() end
     return el
 end
@@ -188,9 +210,21 @@ packages["openmw.types"] = {
     },
     Actor = {
         STANCE = { Nothing = 0, Weapon = 1, Spell = 2 },
-        EQUIPMENT_SLOT = { CarriedRight = 1, Helmet = 2, Cuirass = 3, Greaves = 4 },
+        EQUIPMENT_SLOT = { CarriedRight = 1, Helmet = 2, Cuirass = 3, Greaves = 4, CarriedLeft = 5,
+                           Boots = 6, Shirt = 7, Robe = 8, LeftPauldron = 9, RightPauldron = 10,
+                           LeftGauntlet = 11, RightGauntlet = 12, Pants = 13, Skirt = 14,
+                           Belt = 15, Amulet = 16, LeftRing = 17, RightRing = 18, Ammunition = 19 },
         getStance = function(o) return M.stance or 1 end,
-        getEquipment = function(o, slot) return M.equipped end,
+        -- With a slot: what the player is holding, for the marker sounds. Without
+        -- one: an actor's whole kit, for the gear that comes loose on death.
+        getEquipment = function(o, slot)
+            if slot == nil then return o.equipment or {} end
+            return M.equipped
+        end,
+        setEquipment = function(o, equipment) (o.object or o).equipment = equipment end,
+        inventory = function(o)
+            return { getAll = function() return o.carried or {} end }
+        end,
         objectIsInstance = function(o)
             return o ~= nil and (o.kind == "npc" or o.kind == "creature" or o.kind == "player")
         end,
@@ -207,6 +241,8 @@ packages["openmw.types"] = {
     Light = {
         createRecordDraft = function(t) return t end,
     },
+    Armor = { objectIsInstance = function(o) return o ~= nil and o.kind == "armor" end },
+    Clothing = { objectIsInstance = function(o) return o ~= nil and o.kind == "clothing" end },
 }
 packages["openmw.world"] = {
     setSimulationTimeScale = function(s) M.timeScale = s; note("timeScale=%.3f", s) end,
@@ -325,8 +361,13 @@ M.damageListeners = {}
 M.settingsPages = {}
 M.settingsGroups = {}
 
+M.renderers = {}
+
+packages["openmw.ambient"] = { playSoundFile = function() end }
 packages["openmw.interfaces"] = {
+    MWUI = { templates = { box = { type = "Container" } } },
     Settings = {
+        registerRenderer = function(name, fn) M.renderers[name] = fn end,
         registerPage = function(p) table.insert(M.settingsPages, p) end,
         registerGroup = function(g)
             table.insert(M.settingsGroups, g)

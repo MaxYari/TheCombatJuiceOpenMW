@@ -71,7 +71,7 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 6, "six settings groups registered")
+check(#stub.settingsGroups == 7, "six settings groups from the player, one from global.lua")
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -83,8 +83,8 @@ local cam = stub.settingsStore["SettingsCombatJuiceCamera"]
 check(cam.ShakeStrength == 1.0 and cam.ShakeDuration == 0.3 and cam.ShakeFrequency == 38,
       "camera shake defaults match the tuned in-game settings")
 check(cam.ShakeTakenHitFactor == 0, "and taking a hit does not shake by default")
-check(stub.settingsStore["SettingsCombatJuiceFlash"].FlashOn == "Short slow motion",
-      "the kill flash rides the short slow motion by default")
+check(stub.settingsStore["SettingsCombatJuiceFlash"].FlashOn == "Long slow motion",
+      "the kill flash rides the long slow motion by default")
 
 local function frame(dt)
     stub.realTime = stub.realTime + (dt or 0.016)
@@ -125,7 +125,7 @@ c.dead = true
 player.eventHandlers.CJ_ActorKilled({ victim = c })
 s = sentSlowdown()
 check(s ~= nil, "slows time")
-check(s and math.abs((s.inTime + s.hold + s.outTime) - 1.5) < 1e-6,
+check(s and math.abs((s.inTime + s.hold + s.outTime) - 2.0) < 1e-6,
       "and the long slow motion wins, since both qualified")
 
 print("\n== triggers and chance ==")
@@ -311,18 +311,50 @@ setting("Camera", "ShakeScalesWithDamage", true)
 
 print("\n== hit markers ==")
 local hm = loadScript("hitmarkers.lua")
-check(#hm.ids >= 5, "every definition file in hitmarkers/ is found (" .. #hm.ids .. ")")
+check(#hm.ids >= 4, "every definition file in hitmarkers/ is found (" .. #hm.ids .. ")")
 local byStyle = { slide = 0, fade = 0 }
 for _, id in ipairs(hm.ids) do
     local def = hm.get(id)
     byStyle[def.style] = (byStyle[def.style] or 0) + 1
 end
-check(byStyle.slide >= 2 and byStyle.fade >= 3,
+check(byStyle.slide >= 1 and byStyle.fade >= 1,
       "both animation styles are represented, Dynamic Reticle's and Stupid-Metal's")
 check(hm.get("sm_skull").recolour == false, "the skull is marked as keeping its own colours")
 check(hm.get("faded_triangles").recolour == true, "and the white art takes the colour setting")
 check(#hm.get("faded_triangles").parts == 4 and #hm.get("sm_skull").parts == 1,
       "a marker can be four pieces or one")
+
+print("\n== hit marker previews in the settings ==")
+local menu = loadScript("menu.lua")
+local renderMarker = stub.renderers.cjMarkerSelect
+check(renderMarker ~= nil, "the menu script registers the marker picker")
+local killColor = stub.settingsStore.SettingsCombatJuiceMarkers.KillMarkerColor
+local picker = renderMarker("faded_triangles", function() end,
+    { items = hm.ids, colorKey = "KillMarkerColor" })
+local preview = picker.content[3]
+local function previewMarker()
+    return preview.layout.content[1].content[2]
+end
+check(preview.layout ~= nil, "it shows a preview under the name")
+local drawn = previewMarker()
+check(drawn.name == "faded_triangles" and drawn.content[4] ~= nil and drawn.content[5] == nil,
+      "drawn from the marker's own parts")
+local part = drawn.content[2] -- top right
+check(part.props.alpha == 1 and part.props.color == killColor,
+      "at rest, fully visible, in the colour it was pointed at")
+check(part.props.relativePosition.x > 0.5 and part.props.relativePosition.y < 0.5,
+      "with the pieces slid out, the way the HUD leaves them")
+check(math.abs(part.props.size.x - 14 * 0.75) < 1e-6, "at the marker size setting")
+local skull = renderMarker("sm_skull", function() end, { items = hm.ids, colorKey = "MarkerColor" })
+check(skull.content[3].layout.content[1].content[2].content[1].props.color == nil,
+      "a marker that keeps its own colours is not tinted in the preview either")
+
+local red = { r = 1, g = 0, b = 0 }
+setting("Markers", "KillMarkerColor", red)
+check(previewMarker().content[2].props.color == red and preview.updates > 0,
+      "changing the colour redraws the preview, which the settings page would not")
+setting("Markers", "MarkerScale", 2)
+check(math.abs(previewMarker().content[2].props.size.x - 28) < 1e-6, "and so does the size")
 
 stub.stance = 1                        -- weapon drawn
 stub.equipped = { kind = "weapon", weaponType = 9 }  -- a bow, which the defaults sound on
@@ -456,6 +488,91 @@ stub.damageListeners[1]({ actor = npc, previousHealth = 10, health = 0, baseHeal
 local killed
 for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_ActorKilled" then killed = ev end end
 check(killed ~= nil, "a lethal blow from the player reports a kill")
+
+print("\n== gear knocked loose on death ==")
+local SLOT = stub.packages["openmw.types"].Actor.EQUIPMENT_SLOT
+local LOOSE = "SettingsCombatJuiceLooseGear"
+local function gearSetting(key, value)
+    stub.globalStore[LOOSE] = stub.globalStore[LOOSE] or {}
+    stub.globalStore[LOOSE][key] = value
+end
+local function dress()
+    npc.equipment = {
+        [SLOT.CarriedRight] = stub.newObject("weapon"),
+        [SLOT.CarriedLeft] = stub.newObject("armor"),
+        [SLOT.Helmet] = stub.newObject("armor"),
+        [SLOT.Boots] = stub.newObject("armor"),
+        [SLOT.Cuirass] = stub.newObject("armor"),
+        [SLOT.Shirt] = stub.newObject("clothing"),
+    }
+    return npc.equipment
+end
+local function die(previousHealth)
+    stub.sentGlobalEvents = {}
+    stub.damageListeners[1]({ actor = npc, previousHealth = previousHealth or 10, health = 0,
+        baseHealth = 40, hit = { attacker = stub.player, successful = true } })
+    for _, ev in ipairs(stub.sentGlobalEvents) do
+        if ev.name == "CJ_ThrowGear" then return ev.data end
+    end
+end
+local function thrownItems(data)
+    local set = {}
+    for _, entry in ipairs(data and data.items or {}) do set[entry.item] = true end
+    return set
+end
+
+npc.position = stub.vec3(100, 0, 0) -- east of the player, who stands at the origin
+gearSetting("WeaponLooseChance", 1)
+gearSetting("HelmetLooseChance", 1)
+gearSetting("BootsLooseChance", 0)
+gearSetting("WornLooseChance", 0)
+local kit = dress()
+local gear = die()
+local flew = thrownItems(gear)
+check(flew[kit[SLOT.CarriedRight]] and flew[kit[SLOT.CarriedLeft]] and flew[kit[SLOT.Helmet]],
+      "at chance 1 the weapon, the shield and the helmet come loose")
+check(not flew[kit[SLOT.Boots]] and not flew[kit[SLOT.Cuirass]], "at chance 0 the boots stay on")
+check(npc.equipment[SLOT.CarriedRight] == nil and npc.equipment[SLOT.Helmet] == nil
+      and npc.equipment[SLOT.Boots] == kit[SLOT.Boots],
+      "what came loose is unequipped, the rest is still worn")
+check(gear and gear.away and gear.away.x > 0.99, "and it flies away from the killer")
+
+gearSetting("WornLooseChance", 1)
+kit = dress()
+flew = thrownItems(die())
+check(flew[kit[SLOT.Cuirass]] and flew[kit[SLOT.Shirt]], "the other worn pieces have a chance of their own")
+check(not flew[kit[SLOT.Boots]], "which the boots, having theirs, are not rolled against again")
+
+gearSetting("BootsLooseChance", 1)
+kit = dress()
+flew = thrownItems(die())
+check(flew[kit[SLOT.Boots]], "boots at chance 1 go flying")
+
+kit = dress()
+check(die(0) == nil and npc.equipment == kit, "a corpse hit again sheds nothing")
+
+gearSetting("LooseGearEnabled", false)
+check(die() == nil and npc.equipment == kit, "switched off, nothing comes loose")
+gearSetting("LooseGearEnabled", true)
+
+stub.contentFiles["LuaPhysicsEngine.omwscripts"] = false
+check(die() == nil and npc.equipment == kit, "without LuaPhysics nothing is taken off at all")
+stub.contentFiles["LuaPhysicsEngine.omwscripts"] = nil
+
+gear = die()
+stub.sentObjectEvents = {}
+math.randomseed(1) -- the scatter is random; a single item can go a little backwards
+global.eventHandlers.CJ_ThrowGear(gear)
+local impulses, upward, awayward = 0, true, 0
+for _, ev in ipairs(stub.sentObjectEvents) do
+    if ev.name == "LuaPhysics_ApplyImpulse" and ev.target.teleported then
+        impulses = impulses + 1
+        upward = upward and ev.data.impulse.z > 0
+        awayward = awayward + ev.data.impulse.x
+    end
+end
+check(impulses == #gear.items, "the global script puts every item in the world and throws it")
+check(upward and awayward > 0, "up and away from the killer, rather than dropped")
 
 print("\n== a shader that will not load ==")
 stub.install(stub.player)

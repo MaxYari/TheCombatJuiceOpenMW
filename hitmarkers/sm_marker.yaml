@@ -1,0 +1,8 @@
+name: Stupid-Metal
+style: fade
+recolour: true
+size: [44, 44]
+alpha: 0.75
+decay: 8
+parts:
+  - texture: textures/MaxYari/combat juice/hitmarkers/sm_marker.png

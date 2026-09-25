@@ -44,6 +44,7 @@ return {
         ActorKilled = prefix .. "ActorKilled",   -- victim actor -> the player who killed it
         Slowdown = prefix .. "Slowdown",         -- player -> global, asks for a time scale dip
         SpawnLight = prefix .. "SpawnLight",     -- player -> global, asks for a light flash
+        ThrowGear = prefix .. "ThrowGear",       -- dying actor -> global, what came loose off it
     },
 
     -- Settings groups, also the names of their storage sections.
@@ -54,6 +55,7 @@ return {
         effects = "SettingsCombatJuiceEffects",
         markers = "SettingsCombatJuiceMarkers",
         markerSounds = "SettingsCombatJuiceMarkerSounds",
+        looseGear = "SettingsCombatJuiceLooseGear", -- global storage, see settings_global.lua
     },
 
     -- Impact Effects materials that throw sparks. Everything else on an actor

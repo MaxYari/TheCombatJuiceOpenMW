@@ -3,8 +3,7 @@
 
     python3 tools/make_hitmarkers.py
 
-So far: a diagonal cross, as four separate arms so it can be drawn either as one
-piece or as four that slide apart, and a single-piece version of the same.
+So far: a plain diagonal cross, one piece.
 Plain stdlib; PNG is simple enough to write by hand.
 """
 
@@ -34,51 +33,34 @@ def write_png(path, width, height, pixels):
     print(f"wrote {path.name} ({width}x{height})")
 
 
-def bar(size, thickness, taper, flip):
-    """One arm of the cross: a tapered diagonal stroke, corner to corner."""
-    rows = []
-    for y in range(size):
-        row = []
-        for x in range(size):
-            u = (x + 0.5) / size
-            v = (y + 0.5) / size
-            if flip:
-                u = 1.0 - u
-            # distance from the diagonal, and how far along it we are
-            along = (u + v) * 0.5
-            across = abs(u - v) / 1.4142
-            width = thickness * (1.0 - taper * along)
-            edge = max(0.0, 1.0 - across / max(width, 1e-4))
-            # fade the inner end so the four arms meet softly at the middle
-            alpha = edge ** 1.5 * min(1.0, along * 4.0)
-            row.append((1.0, 1.0, 1.0, alpha))
-        rows.append(row)
-    return size, size, rows
-
-
-def cross(size, thickness):
-    """All four arms in one texture, for markers drawn as a single piece."""
+def cross(size, margin, thickness, samples=8):
+    """A plain diagonal cross: two strokes of even width, corner to corner,
+    meeting in the middle and cut square at the edges. Supersampled so the
+    diagonals stay smooth when the UI shrinks it down."""
     rows = []
     half = size / 2
+    reach = half - margin
     for y in range(size):
         row = []
         for x in range(size):
-            dx = (x + 0.5 - half) / half
-            dy = (y + 0.5 - half) / half
-            d = min(abs(abs(dx) - abs(dy)) / 1.4142, 1.0)
-            reach = max(abs(dx), abs(dy))
-            edge = max(0.0, 1.0 - d / thickness)
-            alpha = edge ** 1.5 * min(1.0, reach * 3.0) * max(0.0, 1.0 - max(reach - 0.75, 0.0) * 4.0)
-            row.append((1.0, 1.0, 1.0, alpha))
+            hits = 0
+            for sy in range(samples):
+                for sx in range(samples):
+                    dx = x + (sx + 0.5) / samples - half
+                    dy = y + (sy + 0.5) / samples - half
+                    if max(abs(dx), abs(dy)) > reach:
+                        continue
+                    # distance from the nearer of the two diagonals
+                    if abs(abs(dx) - abs(dy)) / 1.4142 <= thickness / 2:
+                        hits += 1
+            row.append((1.0, 1.0, 1.0, hits / samples ** 2))
         rows.append(row)
     return size, size, rows
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, flip in (("tl", False), ("br", False), ("tr", True), ("bl", True)):
-        write_png(OUT / f"cross_{name}.png", *bar(32, 0.16, 0.55, flip))
-    write_png(OUT / "cross.png", *cross(64, 0.10))
+    write_png(OUT / "cross.png", *cross(32, 1, 4.5))
 
 
 if __name__ == "__main__":

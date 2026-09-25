@@ -33,6 +33,22 @@ local function vector2(value, fallback)
     return fallback
 end
 
+-- A piece anchors to the corner it slides towards, so the set closes up into
+-- one shape at the centre.
+local function normaliseParts(parts)
+    local out = {}
+    for i, part in ipairs(parts) do
+        local direction = vector2(part.direction, util.vector2(0, 0))
+        out[i] = {
+            texture = part.texture,
+            direction = direction,
+            anchor = util.vector2(direction.x > 0 and 0 or (direction.x < 0 and 1 or 0.5),
+                direction.y > 0 and 0 or (direction.y < 0 and 1 or 0.5)),
+        }
+    end
+    return out
+end
+
 local function loadDefs()
     for path in vfs.pathsWithPrefix(DEFS_PREFIX) do
         if path:lower():match("%.yaml$") then
@@ -51,6 +67,9 @@ local function loadDefs()
                 def.fadeTime = def.fadeTime or 0.6
                 def.decay = def.decay or 8
                 def.recolour = def.recolour ~= false
+                -- a fading marker never moves, so its parts stay closed up at the centre
+                if def.style == "fade" then def.spread = 0 end
+                def.parts = normaliseParts(def.parts)
                 defs[id] = def
                 table.insert(defIds, id)
             end
@@ -68,97 +87,110 @@ function module.get(id)
     return defs[id] or defs[defIds[1]]
 end
 
--- Elements ------------------------------------------------------------------
+-- Layout --------------------------------------------------------------------
+--
+-- A marker is drawn on a square canvas centred on the crosshair; how far its
+-- parts spread is a share of that square. The HUD builds every marker from
+-- this once and animates the props, the settings preview draws one at rest.
+
+local CANVAS = util.vector2(200, 200)
+local CENTRE = util.vector2(0.5, 0.5)
+
+-- Where a part sits once it has slid `t` of the way out.
+local function partPosition(def, part, scale, t)
+    return CENTRE + part.direction * (def.spread * scale * t)
+end
+
+-- opts: { scale, alpha, color, t } - t is how far the parts have slid, 1 is
+-- where they come to rest.
+function module.layout(def, opts)
+    local content = {}
+    for i, part in ipairs(def.parts) do
+        content[i] = {
+            name = tostring(i),
+            type = ui.TYPE.Image,
+            props = {
+                alpha = opts.alpha,
+                color = def.recolour and opts.color or nil,
+                size = def.size * opts.scale,
+                relativePosition = partPosition(def, part, opts.scale, opts.t),
+                anchor = part.anchor,
+                resource = ui.texture { path = part.texture },
+            },
+        }
+    end
+    return {
+        name = def.id,
+        type = ui.TYPE.Widget,
+        props = { size = CANVAS, relativePosition = CENTRE, anchor = CENTRE },
+        content = ui.content(content),
+    }
+end
+
+-- The HUD ---------------------------------------------------------------------
 --
 -- Every marker gets its parts built once, sitting at zero alpha until it is
 -- asked for. There are a handful of them and they cost nothing while hidden.
+-- The element itself waits for the first marker, so the menu script can use
+-- this module without putting anything on the HUD.
 
-local parentElement = ui.create({
-    layer = 'HUD',
-    type = ui.TYPE.Widget,
-    props = {
-        size = util.vector2(200, 200),
-        relativePosition = util.vector2(0.5, 0.5),
-        anchor = util.vector2(0.5, 0.5),
-    },
-    content = ui.content {},
-})
+local hud
 
-local built = {} -- [id] = { parts = { { el, direction } }, tweeners = {} }
+local function hudElement()
+    if not hud then
+        hud = ui.create({
+            layer = 'HUD',
+            type = ui.TYPE.Widget,
+            props = { size = CANVAS, relativePosition = CENTRE, anchor = CENTRE },
+            content = ui.content {},
+        })
+    end
+    return hud
+end
+
+local built = {} -- [id] = true
 
 local function build(def)
-    if built[def.id] then return built[def.id] end
-
-    local content = {}
-    local parts = {}
-    for i, part in ipairs(def.parts) do
-        local direction = vector2(part.direction, util.vector2(0, 0))
-        -- A piece anchors to the corner it slides towards, so the set closes up
-        -- into one shape at the centre.
-        local anchor = util.vector2(direction.x > 0 and 0 or (direction.x < 0 and 1 or 0.5),
-            direction.y > 0 and 0 or (direction.y < 0 and 1 or 0.5))
-        local name = def.id .. "_" .. i
-        table.insert(content, {
-            name = name,
-            type = ui.TYPE.Image,
-            props = {
-                alpha = 0,
-                size = def.size,
-                relativePosition = util.vector2(0.5, 0.5),
-                anchor = anchor,
-                resource = ui.texture { path = part.texture },
-            },
-        })
-        table.insert(parts, { name = name, direction = direction })
-    end
-
-    local wrapper = {
-        name = def.id,
-        type = ui.TYPE.Widget,
-        props = { relativeSize = util.vector2(1, 1) },
-        content = ui.content(content),
-    }
-    parentElement.layout.content:add(wrapper)
-    built[def.id] = { parts = parts, def = def }
-    return built[def.id]
+    if built[def.id] then return end
+    hudElement().layout.content:add(module.layout(def, { scale = 1, alpha = 0, t = 0 }))
+    built[def.id] = true
 end
 
 -- Playing -------------------------------------------------------------------
 
 local active = {} -- markers currently animating
 
-local function partElement(entry, part)
-    return parentElement.layout.content[entry.def.id].content[part.name]
+local function partElement(def, i)
+    return hud.layout.content[def.id].content[i]
 end
 
 -- Dynamic Reticle's: the pieces spring out from the middle, then fade.
-local function playSlide(entry, opts)
-    for _, part in ipairs(entry.parts) do
-        local el = partElement(entry, part)
+local function playSlide(def, opts)
+    for i, part in ipairs(def.parts) do
+        local el = partElement(def, i)
         el.props.color = opts.color
-        el.props.size = entry.def.size * opts.scale
+        el.props.size = def.size * opts.scale
 
         local tweener = Tweener:new()
-        tweener:add(entry.def.slideTime, Tweener.easings.springOutStrong, function(t)
-            local offset = part.direction * gutils.lerp(0, entry.def.spread * opts.scale, t)
-            el.props.relativePosition = util.vector2(0.5, 0.5) + offset
+        tweener:add(def.slideTime, Tweener.easings.springOutStrong, function(t)
+            el.props.relativePosition = partPosition(def, part, opts.scale, t)
             el.props.alpha = util.clamp(opts.alpha * t * 2, 0, 1)
-        end):add(entry.def.fadeTime, Tweener.easings.easeOutCubic, function(t)
+        end):add(def.fadeTime, Tweener.easings.easeOutCubic, function(t)
             el.props.alpha = util.clamp(opts.alpha * (1 - t), 0, 1)
         end)
-        table.insert(active, { entry = entry, part = part, tweener = tweener })
+        table.insert(active, { el = el, tweener = tweener })
     end
 end
 
 -- Stupid-Metal's: the whole marker appears, then decays away.
-local function playFade(entry, opts)
-    for _, part in ipairs(entry.parts) do
-        local el = partElement(entry, part)
+local function playFade(def, opts)
+    for i, part in ipairs(def.parts) do
+        local el = partElement(def, i)
         el.props.color = opts.color
-        el.props.size = entry.def.size * opts.scale
-        el.props.relativePosition = util.vector2(0.5, 0.5)
+        el.props.size = def.size * opts.scale
+        el.props.relativePosition = partPosition(def, part, opts.scale, 1)
         el.props.alpha = util.clamp(opts.alpha, 0, 1)
-        table.insert(active, { entry = entry, part = part, decay = entry.def.decay })
+        table.insert(active, { el = el, decay = def.decay })
     end
 end
 
@@ -166,21 +198,21 @@ end
 function module.play(id, opts)
     local def = module.get(id)
     if not def then return end
-    local entry = build(def)
+    build(def)
     opts = opts or {}
     opts.scale = opts.scale or 1
     opts.alpha = (opts.alpha or 1) * def.alpha
     if not def.recolour then opts.color = nil end
 
-    if def.style == "fade" then playFade(entry, opts) else playSlide(entry, opts) end
-    parentElement:update()
+    if def.style == "fade" then playFade(def, opts) else playSlide(def, opts) end
+    hud:update()
 end
 
 function module.update(dt)
     if #active == 0 then return end
     for i = #active, 1, -1 do
         local item = active[i]
-        local el = partElement(item.entry, item.part)
+        local el = item.el
         if item.tweener then
             item.tweener:tick(dt)
             if #item.tweener.animations == 0 then
@@ -195,12 +227,12 @@ function module.update(dt)
             end
         end
     end
-    parentElement:update()
+    hud:update()
 end
 
 function module.setVisible(visible)
-    parentElement.layout.props.alpha = visible and 1 or 0
-    parentElement:update()
+    hudElement().layout.props.alpha = visible and 1 or 0
+    hud:update()
 end
 
 return module

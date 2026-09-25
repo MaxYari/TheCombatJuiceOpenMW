@@ -1,5 +1,6 @@
 -- Global half of Combat Juice. Owns the simulation time scale (the kill slow
--- motion) and the pools of lights used for the impact flashes. The player script
+-- motion) and the pools of lights used for the impact flashes, and throws the
+-- gear that comes loose off the dead. The player script
 -- decides *when* things happen, this one carries them out, because only global
 -- scripts can change the time scale or create objects.
 
@@ -13,6 +14,8 @@ local types = require("openmw.types")
 local DEFS = require(mp .. "defs")
 local gutils = require(mp .. "gutils")
 local Tweener = require(mp .. "tweener")
+local looseGear = require(mp .. "loose_gear")
+require(mp .. "settings_global")
 
 -- Everything here runs on real time, not simulation time: simulation time is the
 -- very thing being slowed down, so a dip measured in it would never end.
@@ -258,5 +261,6 @@ return {
     eventHandlers = {
         [DEFS.e.Slowdown] = onSlowdown,
         [DEFS.e.SpawnLight] = onSpawnLight,
+        [DEFS.e.ThrowGear] = looseGear.throw,
     },
 }

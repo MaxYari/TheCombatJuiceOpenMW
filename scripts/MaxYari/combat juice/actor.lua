@@ -1,6 +1,6 @@
--- Runs on every NPC and creature. Its only job is to tell the player about hits
--- and kills that concern them: the victim is the only one the engine tells
--- whether an attack landed, and where.
+-- Runs on every NPC and creature. It tells the player about hits and kills that
+-- concern them - the victim is the only one the engine tells whether an attack
+-- landed, and where - and when it dies, knocks its gear loose.
 
 local mp = "scripts/MaxYari/combat juice/"
 
@@ -11,6 +11,7 @@ local nearby = require("openmw.nearby")
 local I = require('openmw.interfaces')
 
 local DEFS = require(mp .. "defs")
+local looseGear = require(mp .. "loose_gear")
 
 local selfObject = omwself.object
 
@@ -69,6 +70,10 @@ local function onHealthDecrease(e)
     end
 
     if e.health > 0 then return end
+
+    -- Every death, whoever caused it. Only the blow that crosses zero counts,
+    -- so a corpse loaded from a save, or hit again, sheds nothing.
+    if e.previousHealth > 0 then looseGear.strip(omwself, attacker) end
 
     -- Only tell the player about kills that are theirs: either the killing blow
     -- was theirs, or this actor was fighting them and something of theirs (a

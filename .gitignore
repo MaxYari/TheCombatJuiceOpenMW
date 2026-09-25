@@ -1,2 +1,6 @@
 # Local output of tools/build_nexus_zip.sh
 nexus-upload.zip
+
+# Python bytecode and Blender's previous-save backups
+__pycache__/
+*.blend1
