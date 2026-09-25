@@ -5,16 +5,21 @@
 #             fade  - the whole thing appears at once and fades out
 #   recolour  whether the marker takes the colour from the settings. Art that is
 #             already coloured (a red skull) should say no.
-#   size      one part, in pixels, before the size multiplier
+#   hold      seconds at full strength before it starts to fade (0 if left out)
+#   size      one part, in pixels, at 100% - each marker keeps its own size
+#             setting on top of this
 #   parts     one entry for a single piece marker, or one per piece
 #   direction which way a piece slides, and which corner it anchors to
+#   centred   whether it sits over the crosshair. Left out, a marker that does
+#             not slide apart is. A centred kill marker fades Dynamic Reticle's
+#             reticle out while it shows.
 
 name: Faded Triangles
 style: slide
 recolour: true
-size: [14, 14]
+size: [10.5, 10.5]
 alpha: 1.0
-spread: 0.0625
+spread: 0.046875
 slideTime: 0.2
 fadeTime: 0.6
 parts:

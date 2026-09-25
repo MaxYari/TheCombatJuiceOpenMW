@@ -66,9 +66,12 @@ local function loadDefs()
                 def.slideTime = def.slideTime or 0.2
                 def.fadeTime = def.fadeTime or 0.6
                 def.decay = def.decay or 8
+                def.hold = def.hold or 0
                 def.recolour = def.recolour ~= false
                 -- a fading marker never moves, so its parts stay closed up at the centre
                 if def.style == "fade" then def.spread = 0 end
+                -- and one that does not move sits over the crosshair
+                if def.centred == nil then def.centred = def.spread == 0 end
                 def.parts = normaliseParts(def.parts)
                 defs[id] = def
                 table.insert(defIds, id)
@@ -175,10 +178,12 @@ local function playSlide(def, opts)
         tweener:add(def.slideTime, Tweener.easings.springOutStrong, function(t)
             el.props.relativePosition = partPosition(def, part, opts.scale, t)
             el.props.alpha = util.clamp(opts.alpha * t * 2, 0, 1)
-        end):add(def.fadeTime, Tweener.easings.easeOutCubic, function(t)
+        end)
+        if def.hold > 0 then tweener:add(def.hold, Tweener.easings.linear, function() end) end
+        tweener:add(def.fadeTime, Tweener.easings.easeOutCubic, function(t)
             el.props.alpha = util.clamp(opts.alpha * (1 - t), 0, 1)
         end)
-        table.insert(active, { el = el, tweener = tweener })
+        table.insert(active, { el = el, tweener = tweener, covers = opts.covers, peak = opts.alpha })
     end
 end
 
@@ -190,11 +195,13 @@ local function playFade(def, opts)
         el.props.size = def.size * opts.scale
         el.props.relativePosition = partPosition(def, part, opts.scale, 1)
         el.props.alpha = util.clamp(opts.alpha, 0, 1)
-        table.insert(active, { el = el, decay = def.decay })
+        table.insert(active, { el = el, decay = def.decay, hold = def.hold, covers = opts.covers,
+            peak = opts.alpha })
     end
 end
 
--- opts: { scale, alpha, color }
+-- opts: { scale, alpha, color, overReticle } - overReticle asks for the marker to
+-- count towards reticleCover() while it shows, if it is a centred one.
 function module.play(id, opts)
     local def = module.get(id)
     if not def then return end
@@ -203,6 +210,7 @@ function module.play(id, opts)
     opts.scale = opts.scale or 1
     opts.alpha = (opts.alpha or 1) * def.alpha
     if not def.recolour then opts.color = nil end
+    opts.covers = opts.overReticle and def.centred or false
 
     if def.style == "fade" then playFade(def, opts) else playSlide(def, opts) end
     hud:update()
@@ -219,6 +227,8 @@ function module.update(dt)
                 el.props.alpha = 0
                 table.remove(active, i)
             end
+        elseif item.hold > 0 then
+            item.hold = item.hold - dt
         else
             el.props.alpha = gutils.lerp(el.props.alpha, 0, math.min(dt * item.decay, 1))
             if el.props.alpha < 0.01 then
@@ -228,6 +238,18 @@ function module.update(dt)
         end
     end
     hud:update()
+end
+
+-- How much of the crosshair a centred marker played with overReticle is hiding
+-- right now: 1 as it appears, falling to 0 as it fades.
+function module.reticleCover()
+    local cover = 0
+    for _, item in ipairs(active) do
+        if item.covers and item.peak > 0 then
+            cover = math.max(cover, util.clamp(item.el.props.alpha / item.peak, 0, 1))
+        end
+    end
+    return cover
 end
 
 function module.setVisible(visible)

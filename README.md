@@ -56,6 +56,8 @@ Have fun!
 - Gear flying off on kill moves it out of the corpse and onto the floor, so you pick it up from the ground instead of looting the body. Each item (weapon, helmet, boots, other worn pieces, inventory) has its own chance in the settings - set a chance to 0 to leave that item on the corpse.
 - To get Impact Effects' original sparks back, delete the `meshes/e/impact` folder from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).
+- Every hit marker keeps its own size - set it with - and + under its preview in the settings.
+- With [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) installed, its reticle fades out while a kill marker drawn over the crosshair is showing, and fades back in with it. This needs a Dynamic Reticle newer than 1.4.1.
 - Hit markers are simple definition files in the `hitmarkers/` folder. To add your own, copy one of them, point it at your textures, and it will show up in the settings (this works from other mods too).
 
 ## ⚔︎ Credits

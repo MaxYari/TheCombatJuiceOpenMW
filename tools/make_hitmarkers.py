@@ -60,7 +60,7 @@ def cross(size, margin, thickness, samples=8):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    write_png(OUT / "cross.png", *cross(32, 1, 4.5))
+    write_png(OUT / "cross.png", *cross(32, 1, 2.9))
 
 
 if __name__ == "__main__":

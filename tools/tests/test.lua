@@ -75,7 +75,8 @@ check(#stub.settingsGroups == 7, "six settings groups from the player, one from 
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
-check(slow.SmallSlowdownChance == 1, "at 100% by default")
+check(slow.SmallSlowdownChance == 0.25, "on a quarter of them by default")
+setting("Slowdown", "SmallSlowdownChance", 1) -- every kill, so the runs below are certain
 check(slow.BigSlowdownTrigger == "Long encounter end", "the long one defaults to long fights only")
 check(slow.BigSlowdownChance == 1, "at 100% by default")
 check(slow.LongEncounterSeconds == 20, "a long fight is 20 seconds by default")
@@ -332,8 +333,12 @@ local killColor = stub.settingsStore.SettingsCombatJuiceMarkers.KillMarkerColor
 local picker = renderMarker("faded_triangles", function() end,
     { items = hm.ids, colorKey = "KillMarkerColor" })
 local preview = picker.content[3]
-local function previewMarker()
-    return preview.layout.content[1].content[2]
+-- preview > box > backdrop and marker; preview > size row > [-] label [+]
+local function previewMarker(p)
+    return (p or preview).layout.content[1].content[1].content[2]
+end
+local function sizeRow(p)
+    return (p or preview).layout.content[3]
 end
 check(preview.layout ~= nil, "it shows a preview under the name")
 local drawn = previewMarker()
@@ -344,17 +349,85 @@ check(part.props.alpha == 1 and part.props.color == killColor,
       "at rest, fully visible, in the colour it was pointed at")
 check(part.props.relativePosition.x > 0.5 and part.props.relativePosition.y < 0.5,
       "with the pieces slid out, the way the HUD leaves them")
-check(math.abs(part.props.size.x - 14 * 0.75) < 1e-6, "at the marker size setting")
+check(math.abs(part.props.size.x - 10.5) < 1e-6, "at the size its definition gives it")
+check(sizeRow().content[2].content[1].props.text == "Size 100%", "which reads as 100% under it")
 local skull = renderMarker("sm_skull", function() end, { items = hm.ids, colorKey = "MarkerColor" })
-check(skull.content[3].layout.content[1].content[2].content[1].props.color == nil,
+local skullPreview = skull.content[3]
+check(previewMarker(skullPreview).content[1].props.color == nil,
       "a marker that keeps its own colours is not tinted in the preview either")
 
 local red = { r = 1, g = 0, b = 0 }
 setting("Markers", "KillMarkerColor", red)
 check(previewMarker().content[2].props.color == red and preview.updates > 0,
       "changing the colour redraws the preview, which the settings page would not")
-setting("Markers", "MarkerScale", 2)
-check(math.abs(previewMarker().content[2].props.size.x - 28) < 1e-6, "and so does the size")
+
+print("\n== each marker keeps its own size ==")
+local function click(button) button.content[1].events.mouseClick() end
+click(sizeRow().content[3]) -- +
+click(sizeRow().content[3]) -- +
+local sizes = stub.settingsStore.SettingsCombatJuiceMarkers.MarkerSizes
+check(sizes.faded_triangles == 1.1, "+ grows the marker on show, in steps of 5%")
+check(math.abs(previewMarker().content[2].props.size.x - 10.5 * 1.1) < 1e-6
+      and sizeRow().content[2].content[1].props.text == "Size 110%",
+      "and its preview is redrawn at the new size")
+check(sizes.sm_skull == nil and math.abs(previewMarker(skullPreview).content[1].props.size.x - 63) < 1e-6,
+      "without leaking into any other marker")
+for _ = 1, 40 do click(sizeRow(skullPreview).content[1]) end -- - past the bottom
+check(stub.settingsStore.SettingsCombatJuiceMarkers.MarkerSizes.sm_skull == 0.05,
+      "- stops at 5% rather than making it vanish")
+stub.renderers.cjMarkerSizes(sizes, function(v) setting("Markers", "MarkerSizes", v) end)
+    .content[1].events.mouseClick()
+check(next(stub.settingsStore.SettingsCombatJuiceMarkers.MarkerSizes) == nil,
+      "and one button puts every marker back to its own size")
+
+setting("Markers", "MarkerSizes", { faded_triangles = 2 })
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(math.abs(stub.hud.layout.content.faded_triangles.content[1].props.size.x - 21) < 1e-6,
+      "in game, the hit marker is drawn at its own size")
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = true })
+local crossPart = stub.hud.layout.content.cross.content[1]
+check(math.abs(crossPart.props.size.x - 16.8) < 1e-6,
+      "and the kill marker at its own, a cross 1.6 times its first size by default")
+for _ = 1, 15 do player.engineHandlers.onUpdate(0.016) end -- 0.24s
+check(crossPart.props.alpha == 1, "which holds at full strength for its hold time")
+for _ = 1, 15 do player.engineHandlers.onUpdate(0.016) end -- 0.48s
+check(crossPart.props.alpha < 1 and crossPart.props.alpha > 0, "and then fades")
+setting("Markers", "MarkerSizes", {})
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+
+print("\n== the reticle under a kill marker ==")
+local interfaces = stub.packages["openmw.interfaces"]
+local reticleCalls = {}
+local function killWith(marker)
+    setting("Markers", "KillMarker", marker)
+    reticleCalls = {}
+    player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.5, lethal = true })
+    for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+end
+interfaces.DynamicReticle = { version = 1.1, setAlphaMultiplier = function(source, alpha)
+    table.insert(reticleCalls, { source = source, alpha = alpha })
+end }
+killWith("cross")
+check(reticleCalls[1] and reticleCalls[1].alpha == 0 and reticleCalls[1].source == "CombatJuice",
+      "a centred kill marker hides Dynamic Reticle's reticle as it appears")
+local rising = true
+for i = 2, #reticleCalls do rising = rising and reticleCalls[i].alpha >= reticleCalls[i - 1].alpha end
+check(rising and #reticleCalls > 2 and reticleCalls[#reticleCalls].alpha == 1,
+      "fades it back in as the marker fades, and hands it back at the end")
+killWith("faded_triangles")
+check(#reticleCalls == 0, "a marker that slides apart around the crosshair leaves it alone")
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+setting("Markers", "HitMarker", "sm_marker")
+killWith("faded_triangles")
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+check(#reticleCalls == 0, "and so does a centred marker on an ordinary hit")
+setting("Markers", "HitMarker", "faded_triangles")
+interfaces.DynamicReticle = { version = 1.0 }
+check(pcall(killWith, "cross"), "an older Dynamic Reticle, without the call, is left alone without an error")
+interfaces.DynamicReticle = nil
+check(pcall(killWith, "cross"), "and so is having no Dynamic Reticle at all")
+setting("Markers", "KillMarker", "cross")
 
 stub.stance = 1                        -- weapon drawn
 stub.equipped = { kind = "weapon", weaponType = 9 }  -- a bow, which the defaults sound on
@@ -583,6 +656,7 @@ stub.settingsPages, stub.settingsGroups = {}, {}
 stub.hitHandlers = {}
 local okLoad, player2 = pcall(loadScript, "player.lua")
 check(okLoad, "the player script still loads")
+setting("Slowdown", "SmallSlowdownChance", 1) -- loading it put the default back
 if okLoad then
     stub.sentGlobalEvents = {}
     player2.eventHandlers.CJ_ActorKilled({ victim = stub.newObject("npc") })

@@ -493,6 +493,22 @@ local function soundAllowed()
     return markerSoundSettings.MeleeSound
 end
 
+-- Dynamic Reticle -----------------------------------------------------------
+--
+-- A kill marker drawn over the crosshair fades Dynamic Reticle's reticle out
+-- from under it, and back in as the marker fades. setAlphaMultiplier arrived in
+-- its interface 1.1: with an older one, or none at all, the reticle stays put.
+
+local reticleAlpha = 1
+
+local function updateReticle()
+    local alpha = 1 - hitmarkers.reticleCover()
+    if alpha == reticleAlpha then return end
+    local reticle = I.DynamicReticle
+    if not (reticle and type(reticle.setAlphaMultiplier) == "function") then return end
+    if pcall(reticle.setAlphaMultiplier, DEFS.modId, alpha) then reticleAlpha = alpha end
+end
+
 local function playMarker(lethal, weak)
     if not markerSettings.MarkersEnabled then return end
 
@@ -500,11 +516,17 @@ local function playMarker(lethal, weak)
     if weak and not lethal then opacity = markerSettings.WeakMarkerOpacity or 0 end
     if opacity <= 0 then return end
 
-    hitmarkers.play(lethal and markerSettings.KillMarker or markerSettings.HitMarker, {
-        scale = markerSettings.MarkerScale or 1,
+    local id = lethal and markerSettings.KillMarker or markerSettings.HitMarker
+    local sizes = markerSettings.MarkerSizes
+    hitmarkers.play(id, {
+        -- Each marker's own size, set under its preview in the settings.
+        scale = sizes and sizes[id] or 1,
         alpha = opacity,
         color = lethal and markerSettings.KillMarkerColor or markerSettings.MarkerColor,
+        overReticle = lethal,
     })
+    -- Now rather than on the next update, so the two never show together.
+    updateReticle()
 
     -- A glancing blow is shown but not heard.
     if (weak and not lethal) or not soundAllowed() then return end
@@ -612,6 +634,7 @@ local function onUpdate(dt)
     setUpImpactHooks()
     hitmarkers.setVisible(I.UI.isHudVisible())
     hitmarkers.update(dt)
+    updateReticle()
 end
 
 local function onFrame()

@@ -62,6 +62,13 @@ local function makeSection(tbl, name)
     M.subscribers[name] = M.subscribers[name] or {}
     local section = {}
     function section:get(key) return tbl[name][key] end
+    function section:getCopy(key)
+        local value = tbl[name][key]
+        if type(value) ~= "table" then return value end
+        local copy = {}
+        for k, v in pairs(value) do copy[k] = v end
+        return copy
+    end
     function section:set(key, value)
         tbl[name][key] = value
         for _, cb in ipairs(M.subscribers[name]) do cb(name, key) end
@@ -178,7 +185,11 @@ packages["openmw.ui"] = {
             __len = function() return #items end,
         })
     end,
-    create = function(layout) M.lastUi = uiElement(layout) return M.lastUi end,
+    create = function(layout)
+        M.lastUi = uiElement(layout)
+        if layout.layer == "HUD" then M.hud = M.lastUi end
+        return M.lastUi
+    end,
     showMessage = function(m) note("ui.showMessage: %s", m) end,
     isHudVisible = function() return true end }
 packages["openmw.camera"] = {

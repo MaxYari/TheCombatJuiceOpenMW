@@ -1,8 +1,9 @@
 name: Diagonal Cross
 style: fade
 recolour: true
-size: [14, 14]
+size: [16.8, 16.8]
 alpha: 1.0
+hold: 0.3
 decay: 5
 parts:
   - texture: textures/MaxYari/combat juice/hitmarkers/cross.png

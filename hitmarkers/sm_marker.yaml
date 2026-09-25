@@ -1,7 +1,7 @@
 name: Stupid-Metal
 style: fade
 recolour: true
-size: [44, 44]
+size: [33, 33]
 alpha: 0.75
 decay: 8
 parts:
