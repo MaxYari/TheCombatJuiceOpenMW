@@ -55,7 +55,7 @@ I.Settings.registerPage {
     key = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Combat Juice',
-    description = "~~ Kill slow motion, a flash on the kill, camera shake, hit markers and better sparks.",
+    description = "Just that combat sauce! Does not change gameplay mechanics, purely an visual and auditory feast.",
 }
 
 -- The logo at the top of the page, as a group of one setting whose renderer
@@ -77,7 +77,8 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Slow Motion',
-    order = 1,
+    description = "Short slow motion on kill and on combat end. You are the ONE!",
+    order = 4,
     permanentStorage = true,
     settings = {
         checkbox('SlowdownEnabled', 'Enable Slow Motion', true),
@@ -103,18 +104,17 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Camera Shake',
-    order = 2,
+    description = "Fairly subtle by default, adds an oompf to a landed hit.",
+    order = 3,
     permanentStorage = true,
     settings = {
         checkbox('ShakeEnabled', 'Enable Camera Shake', true),
         number('ShakeStrength', 'Shake Strength', 1.0, 0, nil, "Peak angle in degrees."),
         number('ShakeDuration', 'Shake Duration', 0.3, 0, nil, "Seconds of real time."),
         number('ShakeFrequency', 'Shake Frequency', 38, 1, nil, "Wobbles per second."),
-        checkbox('ShakeScalesWithDamage', 'Scale Shake With Damage Dealt', true,
-            "Strength and duration run from half to half again, by the share of the victim's " ..
-            "health the blow took: half at a tenth or less, half again at two fifths or more."),
+        checkbox('ShakeScalesWithDamage', 'Scale Shake With Damage Dealt', true, "Should harder hits shake harder, based on a percentage of total HP that enemy lost on this hit, not on absolute weapon damage."),
         number('ShakeTakenHitFactor', 'Strength When You Are Hit', 0, 0, nil,
-            "0 means only your own hits shake the camera."),
+            "if above 0 - hits that land on you will shake the camera."),
     },
 }
 
@@ -122,14 +122,15 @@ I.Settings.registerGroup {
     key = DEFS.settings.flash,
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
-    name = 'Kill Flash',
-    order = 3,
+    name = 'Kill Flash Shader',
+    description = "A blown explosure shader effect that can play alongside the on-kill slowmotion.",
+    order = 5,
     permanentStorage = true,
     settings = {
         select('FlashOn', 'Kill Flash On', DEFS.FLASH_ON.Long, DEFS.FLASH_ON_ITEMS,
-            "Which slow motion it rides. It runs for as long as that slow motion does."),
+            "~I heard you sang a good song, I heard you had a style."),
         number('FlashStrength', 'Kill Flash Strength', 1.0, 0, nil,
-            "The look itself is tuned in the post processing HUD (F2)."),
+            "Can be tuned more in the post processing HUD (F2)."),
     },
 }
 
@@ -138,14 +139,15 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Impact Lights',
-    order = 4,
+    description = "A flash of light on hit, subtle-ish by default, but I can certainly see how some will want to turn it down.",
+    order = 7,
     permanentStorage = true,
     settings = {
-        checkbox('SparkLightEnabled', 'Light Flash On Sparks', true, "Needs OpenMW Impact Effects."),
+        checkbox('SparkLightEnabled', 'Light Flash On Sparks', true, "Add light flashes to spark particle effects? Needs OpenMW Impact Effects as that's what actually places the sparks on armor and environment hits."),
         number('SparkLightRadius', 'Spark Light Radius', 160, 20, nil),
         number('SparkLightDuration', 'Spark Light Duration', 0.09, 0.01, nil),
         number('SparkLightPower', 'Spark Light Power', 1.0, nil, nil,
-            "Brightness, apart from reach. Negative gives a negative light."),
+            "Brightness. Negative gives a negative light. Although I dont think that negative light works with PBR shaders."),
         {
             key = 'SparkLightColor',
             renderer = 'color',
@@ -153,20 +155,23 @@ I.Settings.registerGroup {
             name = 'Spark Light Colour',
         },
 
-        checkbox('HitLightEnabled', 'Light Flash On Other Hits', true,
-            "For hits that throw no sparks. Only on what you hit."),
-        number('HitLightRadius', 'Other Hit Light Radius', 90, 5, nil),
-        number('HitLightDuration', 'Other Hit Light Duration', 0.2, 0.01, nil),
-        number('HitLightPower', 'Other Hit Light Power', 0.75, nil, nil),
+        checkbox('HitLightEnabled', 'Light Flash On Hits', true,
+            "Generic flash for every damagin hit."),
+        number('HitLightRadius', 'Hit Light Radius', 90, 5, nil),
+        number('HitLightDuration', 'Hit Light Duration', 0.2, 0.01, nil),
+        number('HitLightPower', 'Hit Light Power', 0.75, nil, nil),
         {
             key = 'HitLightColor',
             renderer = 'color',
             default = util.color.rgb(0.533, 0.031, 0.031),
-            name = 'Other Hit Light Colour',
+            name = 'Hit Light Colour',
         },
 
+        checkbox('LightNoEffectHits', 'Add light to misses', false,
+           "Should hits that connected but dealt no damage still flash a light (blocked hits, weapon-has-no-effect hits)"),
+
         checkbox('StaminaLightEnabled', 'Light Flash On Stamina Hits', true,
-            "For blows that take only stamina - fists, mostly. A blow that takes health gets the one above."),
+            "Stamina hit light flash. I.e for hand-to-hand attacks."),
         number('StaminaLightRadius', 'Stamina Hit Light Radius', 70, 5, nil),
         number('StaminaLightDuration', 'Stamina Hit Light Duration', 0.15, 0.01, nil),
         number('StaminaLightPower', 'Stamina Hit Light Power', 0.3, nil, nil),
@@ -178,9 +183,9 @@ I.Settings.registerGroup {
         },
 
         checkbox('SparkVariety', 'Vary The Spark Bursts', true,
-            "Picks one of several baked bursts per hit instead of the same one."),
+            "Picks one of several baked bursts per hit instead of the same one. Honestly I have no idea why this option is here, what in the world would be a reason not to have this turned ON? AI brain slopped it here so I'll just leave it for lols."),
         checkbox('SparksOnMediumArmor', 'Sparks On Medium Armour', true,
-            "Impact Effects gives medium armour a sound but no sparks; this fills that in."),
+            "Impact Effects gives medium armour a sound but no sparks; this adds sparks on medium armor as well. Sparks look cool, so more sparks is better."),
     },
 }
 
@@ -204,24 +209,20 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Enchanted Hit Lights',
-    order = 4.5,
+    description = "Enchanted weapons have their own on-hit flashes of light based on ecnhantment spell color or a school of magic. It makes enchanted weapons surprisingly more badass.",
+    order = 8,
     permanentStorage = true,
     settings = {
         checkbox('EnchantLightEnabled', 'Colour Hit Lights By Enchantment', true,
-            "When a blow's cast-on-strike enchantment actually fires - it has the charge - the hit " ..
-            "light takes its colour, sparks or not. The main elements have their own below, anything " ..
-            "else its school's, and a mod's own magic effect brings its own. Radius and duration are " ..
-            "the hit light's."),
+            "So, should enchanted hits be colored with the enchantment color? If false they use the normal hit color (red by default). Destruction school specific elements (Fire, Lightning, Poison e.t.c) have their own colors."),
         number('EnchantLightPower', 'Enchanted Hit Light Power', 0.6, nil, nil),
-        color('EnchantFireColor', 'Fire', 1.0, 0.28, 0.15,
-            "Halfway between the red glow and the orange flames of fire burning on a body."),
+        color('EnchantFireColor', 'Fire', 1.0, 0.28, 0.15, nil),
         color('EnchantFrostColor', 'Frost', 0.72, 0.85, 1.0),
         color('EnchantShockColor', 'Shock', 0.35, 0.55, 1.0),
         color('EnchantPoisonColor', 'Poison', 0.69, 1.0, 0.2),
         color('EnchantAlterationColor', 'Alteration', 0.97, 0.66, 1),
         color('EnchantConjurationColor', 'Conjuration', 1, 0.87, 0.59),
-        color('EnchantDestructionColor', 'Destruction', 1, 0.46, 0.1,
-            "For destruction effects other than the four elements above."),
+        color('EnchantDestructionColor', 'Destruction', 1, 0.46, 0.1,nil),
         color('EnchantIllusionColor', 'Illusion', 0.24, 1, 0.19),
         color('EnchantMysticismColor', 'Mysticism', 0.81, 0.68, 1),
         color('EnchantRestorationColor', 'Restoration', 0.55, 0.62, 1),
@@ -233,7 +234,8 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Hit Markers',
-    order = 5,
+    order = 1,
+    description = "A visual marker around the reticle that appears on a succesfull hit. Enhances an impact feel, especially for ranged.",
     permanentStorage = true,
     settings = {
         checkbox('MarkersEnabled', 'Show Hit Markers', true),
@@ -249,13 +251,12 @@ I.Settings.registerGroup {
         },
         number('MarkerOpacity', 'Marker Opacity', 1.0, 0, 1),
         number('WeakMarkerOpacity', 'Glancing Hit Opacity', 0.0, 0, 1,
-            "For glancing hits, if a mod reports them. 0 hides them."),
+            "For glancing hits, if a mod reports them. 0 hides them. This is a compatibility settings, I dont think any mods curerntly use this, so just ignore it."),
         {
             key = 'MarkerColor',
             renderer = 'color',
             default = util.color.rgb(0.929, 0.8, 0.624),
-            name = 'Hit Marker Colour',
-            description = "Markers whose definition says recolour: false keep their own colours.",
+            name = 'Hit Marker Colour'            
         },
         {
             key = 'KillMarkerColor',
@@ -264,8 +265,7 @@ I.Settings.registerGroup {
             name = 'Kill Marker Colour',
         },
         checkbox('StaminaMarkers', 'Show Markers On Stamina Hits', true,
-            "The hit marker, in its own colour, for blows that take only stamina - fists, mostly. " ..
-            "A blow that takes health as well shows the ordinary one."),
+            "For hits that damage stamina"),
         {
             key = 'StaminaMarkerColor',
             renderer = 'color',
@@ -292,7 +292,8 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Hit Marker Sounds',
-    order = 6,
+    order = 2,
+    description = "Sounds that acoompany hit markers, again enhances impact feel, especially for ranged. I personally a bit on a fence about using it for spellcasing, but left it ON for spells by default.",
     permanentStorage = true,
     settings = {
         soundSelect('HitMarkerSound', 'Hit Sound', 'bass_stab', "Press play to hear it."),

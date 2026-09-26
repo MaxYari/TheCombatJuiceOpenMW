@@ -508,6 +508,30 @@ setting("EnchantLights", "EnchantLightEnabled", false)
 sword.charge = 70
 check(same(strike("fire_sword"), effectStore.HitLightColor), "and all of it can be switched off")
 setting("EnchantLights", "EnchantLightEnabled", true)
+
+print("\n== blows that do nothing ==")
+local function nothingDone()
+    stub.realTime = stub.realTime + 1
+    stub.sentGlobalEvents = {}
+    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, noEffect = true,
+        hitPos = stub.vec3(0, 100, 50), weapon = "plain_sword" })
+    return sentLights()[1]
+end
+stub.equipped = { kind = "weapon", recordId = "plain_sword" }
+player.engineHandlers.onUpdate(0.016)
+check(nothingDone() == nil, "a blow that did nothing lights nothing")
+setting("Effects", "LightNoEffectHits", true)
+check(same(nothingDone(), effectStore.HitLightColor), "unless that is switched on")
+setting("Effects", "LightNoEffectHits", false)
+stub.equipped = sword
+player.engineHandlers.onUpdate(0.016)
+sword.charge = 60
+stub.realTime = stub.realTime + 1
+stub.sentGlobalEvents = {}
+player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, noEffect = true,
+    hitPos = stub.vec3(0, 100, 50), weapon = "fire_sword" })
+check(same(sentLights()[1], enchantStore.EnchantFireColor),
+      "an enchantment that fired into a shield still lights in its colour")
 stub.equipped = heldBefore
 
 print("\n== the reticle under a kill marker ==")
@@ -707,6 +731,25 @@ check(landed({ successful = true, damage = { fatigue = 12 } }).staminaOnly == tr
 check(landed({ successful = true, damage = { health = 4, fatigue = 12 } }).staminaOnly == false,
       "one that takes health as well is an ordinary hit")
 check(landed({ successful = false, damage = { fatigue = 12 } }).staminaOnly == false, "and a miss is neither")
+check(landed({ successful = true, damage = { health = 0 } }).noEffect == true,
+      "a blow that landed and took nothing - resisted, or into a shield - says so")
+check(landed({ successful = true, damage = { health = 4 } }).noEffect == false
+      and landed({ successful = true, damage = { fatigue = 12 } }).noEffect == false
+      and landed({ successful = false, damage = {} }).noEffect == false,
+      "one that took health or stamina, or missed, does not")
+-- A thrown weapon's hit carries a stand-in the engine has already let go of:
+-- asking it anything throws, as the real one does.
+local goneWeapon = setmetatable({}, { __index = function(_, key)
+    if key == "isValid" then return function() return false end end
+    error("Object is not available: 0x1234")
+end })
+local okThrown, thrown = pcall(landed, { successful = true, damage = { health = 5 }, weapon = goneWeapon,
+    ammo = "star", sourceType = "ranged" })
+check(okThrown and thrown and thrown.weapon == nil and thrown.ammo == "star" and thrown.ranged,
+      "a thrown weapon's hit is reported without asking its gone stand-in anything")
+local exploding = setmetatable({}, { __index = function() error("boom") end })
+check(pcall(stub.hitHandlers[1], { attacker = stub.player, successful = true, damage = exploding }),
+      "and nothing going wrong in there can escape to stop the engine's own hit handling")
 
 stub.sentObjectEvents = {}
 stub.damageListeners[1]({ actor = npc, previousHealth = 10, health = 0, baseHealth = 40,

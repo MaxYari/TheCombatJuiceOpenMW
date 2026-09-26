@@ -30,7 +30,16 @@ local function playerIsFighting()
     return false
 end
 
-I.Combat.addOnHitHandler(function(attack)
+-- The weapon's record, if it is still there to ask. A thrown weapon's is a
+-- stand-in the engine lets go of before the hit reaches Lua, and asking it
+-- anything throws; the thrown weapon's id comes as the hit's ammo instead.
+local function weaponId(weapon)
+    if weapon == nil then return nil end
+    local ok, id = pcall(function() return weapon:isValid() and weapon.recordId or nil end)
+    return ok and id or nil
+end
+
+local function reportHit(attack)
     local attacker = attack.attacker
     if not attacker or not types.Player.objectIsInstance(attacker) then return end
     if attack.successful then lastHitByPlayer = core.getRealTime() end
@@ -44,12 +53,29 @@ I.Combat.addOnHitHandler(function(attack)
         hitPos = attack.hitPos,
         staminaOnly = attack.successful and (damage.fatigue or 0) > 0 and (damage.health or 0) <= 0
             or false,
+        -- A blow that landed and did nothing: into a foe that shrugs off normal
+        -- weapons ("Your weapon had no effect"), or into a raised shield. The
+        -- engine settles both before the hit reaches us, so it arrives at 0.
+        noEffect = attack.successful and (damage.health or 0) <= 0 and (damage.fatigue or 0) <= 0
+            or false,
         -- What struck, for the colour of the light if it was enchanted.
-        weapon = attack.weapon and attack.weapon.recordId,
+        weapon = weaponId(attack.weapon),
         ammo = attack.ammo,
         -- A projectile's hit position is where it actually struck; a melee one's is not.
         ranged = tostring(attack.sourceType):lower() == "ranged",
     })
+end
+
+-- Nothing may escape this handler. An error here stops every hit handler after
+-- it, the engine's own that deals the damage among them, and the blow does
+-- nothing at all - which is how thrown weapons came to miss every time.
+local hitReportFailed = false
+I.Combat.addOnHitHandler(function(attack)
+    local ok, err = pcall(reportHit, attack)
+    if not ok and not hitReportFailed then
+        hitReportFailed = true
+        print("[CombatJuice]: a hit could not be reported, the hit itself is unaffected: " .. tostring(err))
+    end
 end)
 
 -- Health decreases come from MSS, which reads health once per frame for every

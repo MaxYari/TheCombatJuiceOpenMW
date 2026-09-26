@@ -38,7 +38,7 @@ I.Settings.registerGroup {
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Gear Knocked Loose On Death',
-    order = 7,
+    order = 6,
     permanentStorage = true,
     settings = {
         checkbox('LooseGearEnabled', 'Knock Gear Loose On Death',

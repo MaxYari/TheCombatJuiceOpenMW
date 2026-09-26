@@ -612,6 +612,9 @@ local function onAttackLanded(data)
     -- discharge is a thing of its own.
     local enchanted = enchantSettings.EnchantLightEnabled
         and enchantLight.hitColor(data, weaponInHand(), now(), enchantColor)
+    -- A blow that did nothing lights nothing - but an enchantment that fired
+    -- did something, shield or no shield, and still lights in its colour.
+    if not enchanted and data.noEffect and not effectSettings.LightNoEffectHits then return end
     if enchanted then
         enchantedLight(impactPoint(selfObject, data.victim, data.hitPos, data.ranged), enchanted)
     elseif not sparkedRecently() then
