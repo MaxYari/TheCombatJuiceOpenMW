@@ -51,6 +51,11 @@ local function trigger(key, name, default, description)
     return select(key, name, default, DEFS.TRIGGER_ITEMS, description)
 end
 
+-- When one kind of hit shows its marker, or plays its sound.
+local function markerOn(key, name, default, description)
+    return select(key, name, default, DEFS.MARKER_ON_ITEMS, description)
+end
+
 I.Settings.registerPage {
     key = 'CombatJuicePage',
     l10n = 'CombatJuice',
@@ -238,7 +243,12 @@ I.Settings.registerGroup {
     description = "A visual marker around the reticle that appears on a succesfull hit. Enhances an impact feel, especially for ranged.",
     permanentStorage = true,
     settings = {
-        checkbox('MarkersEnabled', 'Show Hit Markers', true),
+        markerOn('MeleeMarkers', 'Melee Hit Markers', DEFS.MARKER_ON.Both,
+            "Weapon swings and punches. Shown for your own hits, and for anything that hurts an enemy fighting you - your summons', your companions'. With deaths off, a killing blow shows as a hit."),
+        markerOn('RangedMarkers', 'Ranged Hit Markers', DEFS.MARKER_ON.Both,
+            "Arrows, bolts and thrown weapons."),
+        markerOn('MagicMarkers', 'Magic Hit Markers', DEFS.MARKER_ON.Both,
+            "Spells, and anything else that takes health with no weapon behind it - what a spell leaves burning, lava."),
         markerSelect('HitMarker', 'Hit Marker', 'faded_triangles', 'MarkerColor',
             "Every definition in hitmarkers/ is listed here, from this mod or any other."),
         markerSelect('KillMarker', 'Kill Marker', 'cross', 'KillMarkerColor'),
@@ -265,7 +275,7 @@ I.Settings.registerGroup {
             name = 'Kill Marker Colour',
         },
         checkbox('StaminaMarkers', 'Show Markers On Stamina Hits', true,
-            "For hits that damage stamina"),
+            "For hits that damage stamina, when melee hit markers are on"),
         {
             key = 'StaminaMarkerColor',
             renderer = 'color',
@@ -293,18 +303,18 @@ I.Settings.registerGroup {
     l10n = 'CombatJuice',
     name = 'Hit Marker Sounds',
     order = 2,
-    description = "Sounds that acoompany hit markers, again enhances impact feel, especially for ranged. I personally a bit on a fence about using it for spellcasing, but left it ON for spells by default.",
+    description = "Sounds that acoompany hit markers, again enhances impact feel, especially for ranged. I personally a bit on a fence about using it for spellcasing, but left it ON for spell kills by default.",
     permanentStorage = true,
     settings = {
+        markerOn('MeleeSounds', 'Melee Hit Sounds', DEFS.MARKER_ON.None),
+        markerOn('RangedSounds', 'Ranged Hit Sounds', DEFS.MARKER_ON.Both),
+        markerOn('MagicSounds', 'Magic Hit Sounds', DEFS.MARKER_ON.Death),
         soundSelect('HitMarkerSound', 'Hit Sound', 'bass_stab', "Press play to hear it."),
         number('HitMarkerVolume', 'Hit Volume', 2.0, 0, nil),
         soundSelect('DeathMarkerSound', 'Kill Sound', 'bass_stab'),
         number('DeathMarkerVolume', 'Kill Volume', 2.0, 0, nil),
         number('MarkerSoundPitchMin', 'Pitch Minimum', 0.8, 0.1, nil),
         number('MarkerSoundPitchMax', 'Pitch Maximum', 1.2, 0.1, nil),
-        checkbox('MeleeSound', 'Play With Melee', false),
-        checkbox('MarksmanSound', 'Play With Marksman', true),
-        checkbox('SpellcasterSound', 'Play With Spells', true),
     },
 }
 

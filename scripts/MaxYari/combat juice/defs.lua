@@ -37,6 +37,17 @@ return {
 
     FLASH_ON_ITEMS = { "Never", "Short slow motion", "Long slow motion", "Both slow motions" },
 
+    -- When a kind of hit - melee, ranged, magic - shows its marker, or plays
+    -- its sound.
+    MARKER_ON = {
+        Both = "On hit and on death",
+        Hit = "Only on hit",
+        Death = "Only on death",
+        None = "None",
+    },
+
+    MARKER_ON_ITEMS = { "On hit and on death", "Only on hit", "Only on death", "None" },
+
     -- Events. Actor -> player, player -> global.
     e = {
         AttackLanded = prefix .. "AttackLanded", -- victim actor -> attacking player
@@ -44,6 +55,7 @@ return {
         ActorKilled = prefix .. "ActorKilled",   -- victim actor -> the player who killed it
         Slowdown = prefix .. "Slowdown",         -- player -> global, asks for a time scale dip
         SpawnLight = prefix .. "SpawnLight",     -- player -> global, asks for a light flash
+        SparkSettings = prefix .. "SparkSettings", -- player -> global, the settings the sparks need
         ThrowGear = prefix .. "ThrowGear",       -- dying actor -> global, what came loose off it
     },
 
@@ -60,14 +72,7 @@ return {
         looseGear = "SettingsCombatJuiceLooseGear", -- global storage, see settings_global.lua
     },
 
-    -- Impact Effects materials that throw sparks. Everything else on an actor
-    -- gets the weaker, warmer light instead.
-    sparkMaterials = {
-        Metal = true,
-        MetalHeavy = true,
-        ParryArmorHeavy = true,
-        ParryArmorIce = true,
-        DmgDwemer = true,
-        Stone = true,
-    },
+    -- The first Impact Effects interface version with effect handlers, which
+    -- this mod's sparks need. Older ones are asked to be updated.
+    IMPACT_EFFECTS_VERSION = 109,
 }

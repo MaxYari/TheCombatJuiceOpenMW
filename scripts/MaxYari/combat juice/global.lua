@@ -1,6 +1,7 @@
 -- Global half of Combat Juice. Owns the simulation time scale (the kill slow
--- motion) and the pools of lights used for the impact flashes, and throws the
--- gear that comes loose off the dead. The player script
+-- motion) and the pools of lights used for the impact flashes, handles the
+-- sparks Impact Effects throws, and throws the gear that comes loose off the
+-- dead. The player script
 -- decides *when* things happen, this one carries them out, because only global
 -- scripts can change the time scale or create objects.
 
@@ -10,6 +11,7 @@ local world = require("openmw.world")
 local core = require("openmw.core")
 local util = require("openmw.util")
 local types = require("openmw.types")
+local I = require("openmw.interfaces")
 
 local DEFS = require(mp .. "defs")
 local gutils = require(mp .. "gutils")
@@ -204,6 +206,93 @@ local function updateLights()
     end
 end
 
+-- Sparks --------------------------------------------------------------------
+--
+-- Impact Effects spawns every one of its effects in its global script, and
+-- shows each one to its effect handlers first: what it is for, where, and which
+-- meshes it is about to spawn. Its spark meshes are this mod's already
+-- (meshes/e/impact loads over its own), so with variety off its effects are
+-- left to it. With variety on, each of its sparks is cancelled and one of
+-- several bursts thrown here in its place, while the rest of the effect - dust,
+-- frost, blood - is still Impact Effects' to spawn. Medium armour, which it
+-- gives no effect at all, sparks here too, and every burst gets a light. The
+-- settings are the player's, sent over by the player script.
+
+local sparkDir = "meshes/MaxYari/combat juice/sparks/"
+
+-- Variant 1 of each family is the mesh Impact Effects plays; the rest are ours.
+local SPARK_VARIANTS = {
+    metal = { "meshes/e/impact/metalSpark.nif", sparkDir .. "metal_2.nif",
+              sparkDir .. "metal_3.nif", sparkDir .. "metal_4.nif" },
+    parry = { "meshes/e/impact/parrySpark.nif", sparkDir .. "parry_2.nif",
+              sparkDir .. "parry_3.nif", sparkDir .. "parry_4.nif" },
+}
+
+-- Impact Effects' spark meshes, and the family of bursts each is swapped for.
+local SPARK_FAMILY = {
+    ["meshes/e/impact/metalSpark.nif"] = "metal",
+    ["meshes/e/impact/parrySpark.nif"] = "parry",
+}
+
+local sparkSettings = nil  -- the player's, see onSparkSettings
+local impactHooked = false
+
+local function pick(list)
+    return list[math.random(#list)]
+end
+
+local function spawnBurst(model, pos, scale)
+    world.vfx.spawn(model, pos, { mwMagicVfx = false, useAmbientLight = false, scale = scale or 1 })
+end
+
+local function onImpactEffect(e)
+    -- A block's sparks have no position: they are attached to the shield. And
+    -- an effect another mod has cancelled whole is not ours to add to.
+    if not sparkSettings or not e.hitPos or e.noVfx == true then return end
+
+    -- Cancelled entries are marked in a list, one flag per planned mesh; one
+    -- another handler started is added to rather than replaced.
+    local cancelled = e.noVfx or {}
+    local sparked = false
+    for i, v in ipairs(e.vfx) do
+        if v.kind == "spark" and not cancelled[i] then
+            sparked = true
+            local family = sparkSettings.variety and SPARK_FAMILY[v.mesh]
+            if family then
+                cancelled[i] = true
+                spawnBurst(pick(SPARK_VARIANTS[family]), e.hitPos, v.scale)
+            end
+        end
+    end
+    if next(cancelled) then e.noVfx = cancelled end
+
+    -- Impact Effects gives medium armour a sound but no effect at all. Heavy
+    -- armour's burst fills that in, at the half size it has there.
+    if #e.vfx == 0 and e.material == "ParryArmorMedium" and sparkSettings.mediumArmour then
+        sparked = true
+        spawnBurst(sparkSettings.variety and pick(SPARK_VARIANTS.parry) or SPARK_VARIANTS.parry[1], e.hitPos, 0.5)
+    end
+    if not sparked then return end
+
+    local light = sparkSettings.light
+    if light and light.duration > 0 then
+        onSpawnLight({ player = sparkSettings.player, pos = e.hitPos, radius = light.radius,
+            duration = light.duration, power = light.power, r = light.r, g = light.g, b = light.b })
+    end
+end
+
+-- Sent by the player script when it starts and whenever the settings change.
+-- An Impact Effects too old for effect handlers is left alone; the player
+-- script tells the player to update it.
+local function onSparkSettings(data)
+    sparkSettings = data
+    if impactHooked then return end
+    local ie = I.impactEffects
+    if not ie or (ie.version or 0) < DEFS.IMPACT_EFFECTS_VERSION then return end
+    impactHooked = true
+    ie.addEffectHandler(onImpactEffect)
+end
+
 -- Engine handlers -----------------------------------------------------------
 
 local function onUpdate()
@@ -261,6 +350,7 @@ return {
     eventHandlers = {
         [DEFS.e.Slowdown] = onSlowdown,
         [DEFS.e.SpawnLight] = onSpawnLight,
+        [DEFS.e.SparkSettings] = onSparkSettings,
         [DEFS.e.ThrowGear] = looseGear.throw,
     },
 }
