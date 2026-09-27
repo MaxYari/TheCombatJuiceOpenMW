@@ -167,25 +167,12 @@ local function partElement(def, i)
     return hud.layout.content[def.id].content[i]
 end
 
--- A marker played again while it still shows starts over. Whatever was still
--- animating its parts lets go of them first, or the two runs would fight over
--- them: the old fade winning every frame, and zeroing them when it ended.
-local function stop(def)
-    for i = #active, 1, -1 do
-        if active[i].id == def.id then table.remove(active, i) end
-    end
-end
-
 -- Dynamic Reticle's: the pieces spring out from the middle, then fade.
 local function playSlide(def, opts)
     for i, part in ipairs(def.parts) do
         local el = partElement(def, i)
         el.props.color = opts.color
         el.props.size = def.size * opts.scale
-        -- Back in the middle and unseen now: the tweener only moves them on
-        -- its first tick.
-        el.props.relativePosition = partPosition(def, part, opts.scale, 0)
-        el.props.alpha = 0
 
         local tweener = Tweener:new()
         tweener:add(def.slideTime, Tweener.easings.springOutStrong, function(t)
@@ -196,7 +183,7 @@ local function playSlide(def, opts)
         tweener:add(def.fadeTime, Tweener.easings.easeOutCubic, function(t)
             el.props.alpha = util.clamp(opts.alpha * (1 - t), 0, 1)
         end)
-        table.insert(active, { id = def.id, el = el, tweener = tweener, covers = opts.covers, peak = opts.alpha })
+        table.insert(active, { el = el, tweener = tweener, covers = opts.covers, peak = opts.alpha })
     end
 end
 
@@ -208,7 +195,7 @@ local function playFade(def, opts)
         el.props.size = def.size * opts.scale
         el.props.relativePosition = partPosition(def, part, opts.scale, 1)
         el.props.alpha = util.clamp(opts.alpha, 0, 1)
-        table.insert(active, { id = def.id, el = el, decay = def.decay, hold = def.hold, covers = opts.covers,
+        table.insert(active, { el = el, decay = def.decay, hold = def.hold, covers = opts.covers,
             peak = opts.alpha })
     end
 end
@@ -225,7 +212,6 @@ function module.play(id, opts)
     if not def.recolour then opts.color = nil end
     opts.covers = opts.overReticle and def.centred or false
 
-    stop(def)
     if def.style == "fade" then playFade(def, opts) else playSlide(def, opts) end
     hud:update()
 end

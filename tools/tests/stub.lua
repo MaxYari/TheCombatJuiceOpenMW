@@ -253,7 +253,6 @@ packages["openmw.types"] = {
         end,
         isDead = function(o) return o.dead end,
         isDeathFinished = function(o) return o.dead end,
-        activeSpells = function(o) return (o.object or o).activeSpells or {} end,
 
     },
     NPC = {
@@ -269,13 +268,7 @@ packages["openmw.types"] = {
     Armor = { objectIsInstance = function(o) return o ~= nil and o.kind == "armor" end },
     Clothing = { objectIsInstance = function(o) return o ~= nil and o.kind == "clothing" end },
 }
-M.spawnedVfx = {}
 packages["openmw.world"] = {
-    vfx = {
-        spawn = function(model, pos, options)
-            table.insert(M.spawnedVfx, { model = model, pos = pos, options = options })
-        end,
-    },
     setSimulationTimeScale = function(s) M.timeScale = s; note("timeScale=%.3f", s) end,
     getSimulationTimeScale = function() return M.timeScale end,
     createRecord = function(draft)
@@ -424,18 +417,13 @@ packages["openmw.interfaces"] = {
 
 M.impactActorHandlers = {}
 M.impactObjectHandlers = {}
-M.impactEffectHandlers = {}
 
--- One table stands in for both of Impact Effects' interfaces, the player's
--- (hit handlers) and the global one (effect handlers).
-function M.enableImpactEffects(version)
+function M.enableImpactEffects()
     M.impactActorHandlers, M.impactObjectHandlers = {}, {}
-    M.impactEffectHandlers = {}
     packages["openmw.interfaces"].impactEffects = {
-        version = version or 109,
+        version = 107,
         addHitActorHandler = function(fn) table.insert(M.impactActorHandlers, fn) end,
         addHitObjectHandler = function(fn) table.insert(M.impactObjectHandlers, fn) end,
-        addEffectHandler = function(fn) table.insert(M.impactEffectHandlers, fn) end,
     }
 end
 

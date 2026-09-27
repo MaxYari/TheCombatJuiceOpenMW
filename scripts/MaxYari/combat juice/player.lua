@@ -13,7 +13,6 @@ local nearby = require("openmw.nearby")
 local util = require("openmw.util")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
-local async = require("openmw.async")
 local I = require("openmw.interfaces")
 
 local DEFS = require(mp .. "defs")
@@ -311,8 +310,48 @@ local function onActorKilled(data)
 end
 
 -- Hits ----------------------------------------------------------------------
---
--- Sparks and their light are the global script's, see Impact Effects below.
+
+local sparkDir = "meshes/MaxYari/combat juice/sparks/"
+
+-- Variant 1 of each family keeps the name Impact Effects plays; the rest are
+-- ours. A burst is picked out of the list every time one is thrown.
+local SPARK_VARIANTS = {
+    metal = { "meshes/e/impact/metalSpark.nif", sparkDir .. "metal_2.nif",
+              sparkDir .. "metal_3.nif", sparkDir .. "metal_4.nif" },
+    parry = { "meshes/e/impact/parrySpark.nif", sparkDir .. "parry_2.nif",
+              sparkDir .. "parry_3.nif", sparkDir .. "parry_4.nif" },
+    shield = { "meshes/e/impact/shieldBlock.nif", sparkDir .. "shield_2.nif",
+               sparkDir .. "shield_3.nif" },
+}
+
+-- Loose clusters of hard-thrown sparks, for impacts whose own effect is left
+-- alone because it is more than just sparks.
+local SPARK_CLUSTERS = { sparkDir .. "cluster_1.nif", sparkDir .. "cluster_2.nif",
+                         sparkDir .. "cluster_3.nif" }
+
+-- Materials whose spark effect is a single mesh this mod replaces, so the whole
+-- thing can be swapped for a random variant. Impact Effects scales the armour
+-- one down; matching that keeps the burst the size it always was.
+local SPARK_TAKEOVER = {
+    Metal = { family = "metal", scale = 1 },
+    MetalHeavy = { family = "metal", scale = 1 },
+    Parry = { family = "parry", scale = 1 },
+    ParryArmorHeavy = { family = "parry", scale = 0.5 },
+}
+
+local impactHooksDone = false
+
+local function pick(list)
+    return list[math.random(#list)]
+end
+
+local function spawnVfx(model, pos, scale)
+    core.sendGlobalEvent("SpawnVfx", {
+        model = model,
+        position = pos,
+        options = { mwMagicVfx = false, useAmbientLight = false, scale = scale or 1 },
+    })
+end
 
 -- A Morrowind light has no brightness of its own: what it lights is the
 -- magnitude of its colour, which the engine hands straight to the renderer as
@@ -336,6 +375,14 @@ local function spawnLight(pos, radius, duration, color, fallback, power)
         g = color and color.g or fallback[2],
         b = color and color.b or fallback[3],
     })
+end
+
+local function sparkLight(pos)
+    if not effectSettings.SparkLightEnabled then return end
+    spawnLight(pos, effectSettings.SparkLightRadius or 160,
+        effectSettings.SparkLightDuration or 0.09,
+        effectSettings.SparkLightColor, { 0.62, 0.78, 1.0 },
+        effectSettings.SparkLightPower or 1)
 end
 
 local function hitLight(pos)
@@ -380,6 +427,9 @@ local function enchantColor(key) return enchantSettings[key] end
 -- feet. So work it out here instead.
 
 local AIM_REACH = 320
+local SPARK_WINDOW = 0.35
+
+local lastSparkAt = -1000
 
 -- Chest height on the victim: from the race's own height for an NPC, and from
 -- the engine's hit position for anything else, since that at least lies
@@ -449,6 +499,12 @@ local function impactPoint(attacker, victim, enginePos, ranged)
     return rayAtVictim(attacker, victim, chestHeight(victim, enginePos))
 end
 
+-- Sparks light their own impact, so the warm one stays out of the way of a hit
+-- that has just thrown some.
+local function sparkedRecently()
+    return now() - lastSparkAt < SPARK_WINDOW
+end
+
 -- A tap and a haymaker should not shake the same. The share of the victim's
 -- health the blow took scales both how hard the camera moves and how long it
 -- keeps moving, between half and half again what the settings ask for: half at
@@ -466,19 +522,20 @@ end
 
 -- Hit markers ---------------------------------------------------------------
 
--- Which of the settings a hit falls under, by what dealt it: a melee or a
--- ranged blow, or magic - a spell, or anything else with no blow behind it.
-local MARKER_SETTING = { melee = "MeleeMarkers", ranged = "RangedMarkers", magic = "MagicMarkers" }
-local SOUND_SETTING = { melee = "MeleeSounds", ranged = "RangedSounds", magic = "MagicSounds" }
+-- Which of the three "play with..." switches covers what is in our hands.
+local function soundAllowed()
+    local ok, stance = pcall(types.Actor.getStance, selfObject)
+    if not ok then return false end
+    if stance == types.Actor.STANCE.Spell then return markerSoundSettings.SpellcasterSound end
+    if stance ~= types.Actor.STANCE.Weapon then return false end
 
--- What a DEFS.MARKER_ON setting makes of a hit: "kill", "hit", or nil for
--- nothing. A kill where kills are off but hits are on shows as a hit.
-local function shownAs(value, lethal)
-    local hits = value == DEFS.MARKER_ON.Both or value == DEFS.MARKER_ON.Hit
-    local kills = value == DEFS.MARKER_ON.Both or value == DEFS.MARKER_ON.Death
-    if lethal and kills then return "kill" end
-    if hits then return "hit" end
-    return nil
+    local weapon = types.Actor.getEquipment(selfObject, types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local record = weapon and types.Weapon.objectIsInstance(weapon) and types.Weapon.record(weapon)
+    local ranged = record and (record.type == types.Weapon.TYPE.MarksmanBow
+        or record.type == types.Weapon.TYPE.MarksmanCrossbow
+        or record.type == types.Weapon.TYPE.MarksmanThrown)
+    if ranged then return markerSoundSettings.MarksmanSound end
+    return markerSoundSettings.MeleeSound
 end
 
 -- Dynamic Reticle -----------------------------------------------------------
@@ -497,74 +554,51 @@ local function updateReticle()
     if pcall(reticle.setAlphaMultiplier, DEFS.modId, alpha) then reticleAlpha = alpha end
 end
 
--- Markers and their sounds come at most this often, whichever enemy they are
--- for - Dynamic Reticle's throttle. A kill always shows, and so does a blow
--- that came through I.Combat, starting the marker over - unless one showed
--- within SAME_MOMENT: a weapon's enchantment and the blow that carried it come
--- off a frame apart, and would otherwise be heard twice.
-local MARKER_THROTTLE = 0.333
-local SAME_MOMENT = 0.1
-local lastMarkerAt = -1000
-
--- source: "melee", "ranged" or "magic", see MARKER_SETTING.
 -- stamina: the blow took stamina and no health - the hit marker, in its own
 -- colour. Anything that took health is an ordinary hit and wins.
--- blow: it came through I.Combat, and overrides the throttle.
-local function playMarker(source, lethal, weak, stamina, blow)
-    if not lethal and now() - lastMarkerAt < (blow and SAME_MOMENT or MARKER_THROTTLE) then return end
-    source = MARKER_SETTING[source] and source or "melee"
+local function playMarker(lethal, weak, stamina)
+    if not markerSettings.MarkersEnabled then return end
+    if stamina and not markerSettings.StaminaMarkers then return end
 
-    local marker = shownAs(markerSettings[MARKER_SETTING[source]], lethal)
-    if stamina and not markerSettings.StaminaMarkers then marker = nil end
     local opacity = markerSettings.MarkerOpacity or 1
     if weak and not lethal then opacity = markerSettings.WeakMarkerOpacity or 0 end
-    if opacity <= 0 then marker = nil end
+    if opacity <= 0 then return end
+
+    local id = lethal and markerSettings.KillMarker or markerSettings.HitMarker
+    local sizes = markerSettings.MarkerSizes
+    hitmarkers.play(id, {
+        -- Each marker's own size, set under its preview in the settings.
+        scale = sizes and sizes[id] or 1,
+        alpha = opacity,
+        color = lethal and markerSettings.KillMarkerColor
+            or stamina and markerSettings.StaminaMarkerColor
+            or markerSettings.MarkerColor,
+        overReticle = lethal,
+    })
+    -- Now rather than on the next update, so the two never show together.
+    updateReticle()
+
     -- A glancing blow is shown but not heard.
-    local sound = not (weak and not lethal) and shownAs(markerSoundSettings[SOUND_SETTING[source]], lethal)
-    if not marker and not sound then return end
-    lastMarkerAt = now()
+    if (weak and not lethal) or not soundAllowed() then return end
 
-    if marker then
-        local kill = marker == "kill"
-        local id = kill and markerSettings.KillMarker or markerSettings.HitMarker
-        local sizes = markerSettings.MarkerSizes
-        hitmarkers.play(id, {
-            -- Each marker's own size, set under its preview in the settings.
-            scale = sizes and sizes[id] or 1,
-            alpha = opacity,
-            color = kill and markerSettings.KillMarkerColor
-                or stamina and markerSettings.StaminaMarkerColor
-                or markerSettings.MarkerColor,
-            overReticle = kill,
-        })
-        -- Now rather than on the next update, so the two never show together.
-        updateReticle()
-    end
-    if not sound then return end
-
-    local kill = sound == "kill"
     local minPitch = markerSoundSettings.MarkerSoundPitchMin or 1
     local maxPitch = markerSoundSettings.MarkerSoundPitchMax or 1
-    local name = kill and markerSoundSettings.DeathMarkerSound or markerSoundSettings.HitMarkerSound
+    local name = lethal and markerSoundSettings.DeathMarkerSound or markerSoundSettings.HitMarkerSound
     local path = soundFiles.path(name)
     if not path then return end
     core.sound.playSoundFile3d(path, omwself, {
-        volume = (kill and markerSoundSettings.DeathMarkerVolume
+        volume = (lethal and markerSoundSettings.DeathMarkerVolume
             or markerSoundSettings.HitMarkerVolume) or 1,
         pitch = minPitch + math.random() * math.max(maxPitch - minPitch, 0),
         loop = false,
     })
 end
 
--- Sent by the actor we hit once the health has actually come off it, and by
--- one fighting us whatever hurt it. Only our own melee blows move the camera:
--- a shot, a spell, a summon's blow or a burn is only marked.
+-- Sent by the actor we hit once the health has actually come off it.
 local function onDamageDealt(data)
-    if data.own and data.source == "melee" then
-        local scale = damageShakeScale(data.fraction)
-        startShake(scale, scale)
-    end
-    playMarker(data.source, data.lethal, data.weak, false, data.hit)
+    local scale = damageShakeScale(data.fraction)
+    startShake(scale, scale)
+    playMarker(data.lethal, data.weak)
 end
 
 -- Sent by the actor we hit, from its own I.Combat hit handler. The shake and
@@ -573,7 +607,7 @@ end
 -- event, so a stamina-only one is marked here as well.
 local function onAttackLanded(data)
     if not data.successful then return end
-    if data.staminaOnly then playMarker(data.ranged and "ranged" or "melee", false, false, true, true) end
+    if data.staminaOnly then playMarker(false, false, true) end
     -- An enchantment that fired lights in its own colour, sparks or not: the
     -- discharge is a thing of its own.
     local enchanted = enchantSettings.EnchantLightEnabled
@@ -581,10 +615,9 @@ local function onAttackLanded(data)
     -- A blow that did nothing lights nothing - but an enchantment that fired
     -- did something, shield or no shield, and still lights in its colour.
     if not enchanted and data.noEffect and not effectSettings.LightNoEffectHits then return end
-    -- Sparks bring a light of their own, and the two are meant to add up.
     if enchanted then
         enchantedLight(impactPoint(selfObject, data.victim, data.hitPos, data.ranged), enchanted)
-    else
+    elseif not sparkedRecently() then
         local light = data.staminaOnly and staminaLight or hitLight
         light(impactPoint(selfObject, data.victim, data.hitPos, data.ranged))
     end
@@ -598,58 +631,81 @@ I.Combat.addOnHitHandler(function(attack)
     if factor > 0 then startShake(factor) end
 end)
 
--- Impact Effects ------------------------------------------------------------
+-- Impact Effects hooks ------------------------------------------------------
 --
--- Impact Effects spawns every one of its effects in its global script and
--- reports each one there, so the sparks - the choice of burst, the sparks on
--- medium armour and the light on every burst - are the global script's. The
--- settings behind them are in player storage, which the global script cannot
--- read, so they are sent over when this script starts and whenever the Impact
--- Lights group changes. Loading a save starts both scripts afresh, and with
--- them the settings go over again.
+-- Impact Effects raycasts every swing, works out what was struck and plays the
+-- spark meshes this mod replaces. Hooking it is how we learn where a spark just
+-- happened, and what was hit, without doing any of that work again - and its
+-- hit position is the contact point, not the victim's origin.
 
-local impactHooksDone = false
-local sparkSettingsDirty = true
-
-effectSettings.store:subscribe(async:callback(function() sparkSettingsDirty = true end))
-
-local function sendSparkSettings()
-    sparkSettingsDirty = false
-    local light = nil
-    if effectSettings.SparkLightEnabled then
-        local color = effectSettings.SparkLightColor
-        light = {
-            radius = effectSettings.SparkLightRadius or 160,
-            duration = effectSettings.SparkLightDuration or 0.09,
-            power = effectSettings.SparkLightPower or 1,
-            r = color and color.r or 0.62,
-            g = color and color.g or 0.78,
-            b = color and color.b or 1.0,
-        }
-    end
-    core.sendGlobalEvent(DEFS.e.SparkSettings, {
-        player = selfObject,
-        variety = effectSettings.SparkVariety and true or false,
-        mediumArmour = effectSettings.SparksOnMediumArmor and true or false,
-        light = light,
-    })
+-- Impact Effects plays nothing for a swing that is not a blade, a blunt, an
+-- axe or a spear - fists above all - but tells its handlers about it all the
+-- same. Those do not spark here either: a punch on stone is not a sword on it.
+local SPARKING_TYPES = {}
+for _, name in ipairs({ "ShortBladeOneHand", "LongBladeOneHand", "LongBladeTwoHand", "BluntOneHand",
+    "BluntTwoClose", "BluntTwoWide", "SpearTwoWide", "AxeOneHand", "AxeTwoHand" }) do
+    local weaponType = types.Weapon.TYPE[name]
+    if weaponType then SPARKING_TYPES[weaponType] = true end
 end
 
--- Impact Effects reports a bare body part as "Unarmored" (see
--- docs/impact-effects-unarmored.md). It has no sound of its own and would
--- otherwise fall through to a dirt thud, so keep it quiet.
-local function keepBareBodyQuiet(o, var)
-    if var.material == "Unarmored" then var.noSound = true end
+local function swingSparks()
+    local item = weaponInHand()
+    if not item or not types.Weapon.objectIsInstance(item) then return false end
+    local ok, record = pcall(types.Weapon.record, item)
+    return ok and record ~= nil and SPARKING_TYPES[record.type] == true
+end
+
+local function onImpact(o, var)
+    local material = var.material
+    local pos = var.hitPos
+    if not material or not pos then return end
+
+    local isActor = o ~= nil and types.Actor.objectIsInstance(o)
+
+    local mediumArmour = material == "ParryArmorMedium" and effectSettings.SparksOnMediumArmor
+    local sparks = DEFS.sparkMaterials[material] ~= nil
+    local variety = effectSettings.SparkVariety
+
+    -- Impact Effects reports a bare body part as "Unarmored" (see
+    -- docs/impact-effects-unarmored.md). It has no sound of its own and would
+    -- otherwise fall through to a dirt thud, so keep it quiet.
+    if material == "Unarmored" then var.noSound = true end
+
+    if not swingSparks() then return end
+
+    if sparks or mediumArmour then
+        lastSparkAt = now()
+        sparkLight(pos)
+    end
+
+    if sparks and variety then
+        local takeover = SPARK_TAKEOVER[material]
+        if takeover then
+            -- Ours is the only effect this material plays, so replace it
+            -- outright. The sound is already out by the time handlers run.
+            var.noVfx = true
+            spawnVfx(pick(SPARK_VARIANTS[takeover.family]), pos, takeover.scale)
+        else
+            -- Dust and sparks together: leave it be and throw a handful of
+            -- hard-flung sparks over the top.
+            spawnVfx(pick(SPARK_CLUSTERS), pos, 1)
+        end
+    end
+
+    -- Impact Effects sparks off heavy armour, ice armour, shields and bare
+    -- metal, but medium armour only gets a sound. Optionally fill that in.
+    if mediumArmour then
+        spawnVfx(variety and pick(SPARK_VARIANTS.parry) or SPARK_VARIANTS.parry[1], pos, 0.5)
+    end
 end
 
 local function setUpImpactHooks()
     if impactHooksDone or not I.impactEffects then return end
     impactHooksDone = true
-    if (I.impactEffects.version or 0) < DEFS.IMPACT_EFFECTS_VERSION then
-        ui.showMessage("Combat Juice: Hi Human, I require a newer version of the Impact Effects mod, please update that mod")
-        return
-    end
-    I.impactEffects.addHitActorHandler(keepBareBodyQuiet)
+    I.impactEffects.addHitActorHandler(onImpact)
+    -- Without this one, striking the world - a metal door, a statue, stone -
+    -- never reaches us, which is why those impacts had no light.
+    I.impactEffects.addHitObjectHandler(onImpact)
 end
 
 -- Engine handlers -----------------------------------------------------------
@@ -657,7 +713,6 @@ end
 local function onUpdate(dt)
     if dt <= 0 then return end
     setUpImpactHooks()
-    if sparkSettingsDirty then sendSparkSettings() end
     hitmarkers.setVisible(I.UI.isHudVisible())
     hitmarkers.update(dt)
     if enchantSettings.EnchantLightEnabled then enchantLight.sample(weaponInHand(), now()) end

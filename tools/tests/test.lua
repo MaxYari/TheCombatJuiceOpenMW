@@ -202,7 +202,7 @@ local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
 stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25, hit = true, own = true, source = "melee" })
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25 })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
@@ -273,151 +273,39 @@ stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = false })
 check(#sentLights() == 0, "a miss lights nothing")
 
-print("\n== sparks ==")
--- Impact Effects spawns every effect in its global script and shows it to its
--- effect handlers first, so the global script handles the sparks, on settings
--- the player script sends.
-
--- Runs the player's update and hands whatever spark settings it sent over to
--- the global script, the way the engine would deliver the event.
-local function syncSparks()
-    stub.sentGlobalEvents = {}
-    player.engineHandlers.onUpdate(0.016)
-    for _, ev in ipairs(stub.sentGlobalEvents) do
-        if ev.name == "CJ_SparkSettings" then
-            global.eventHandlers.CJ_SparkSettings(ev.data)
-            return ev.data
-        end
-    end
-end
-
--- Impact Effects' own meshes, as its effects plan them.
-local METAL = "meshes/e/impact/metalSpark.nif"
-local PARRY = "meshes/e/impact/parrySpark.nif"
-local DUST = { mesh = "meshes/e/impact/cloudSmall.nif", tex = "Tx_Ash_Cloud.tga", kind = "dust" }
-
--- An effect as Impact Effects shows it to its handlers, before it spawns.
-local function impactEffect(material, planned, pos, noVfx)
-    local fx = { source = "swing", material = material, hitPos = pos, object = victim,
-        attacker = stub.player, vfx = planned, noVfx = noVfx }
-    stub.spawnedVfx = {}
-    stub.impactEffectHandlers[1](fx)
-    return fx
-end
-
-local function isBurst(model, family)
-    return model == (family == "metal" and METAL or PARRY)
-        or model:find("sparks/" .. family .. "_%d%.nif$") ~= nil
-end
-
-local function litAt(pos)
-    for _, obj in ipairs(stub.allObjects) do
-        if obj.kind == "light" and obj.enabled and obj.pos == pos then return obj end
-    end
-end
-
--- Lets every light the global script has lit run out.
-local function settleLights()
-    stub.realTime = stub.realTime + 1
-    global.engineHandlers.onUpdate()
-end
-
-local sparkSettings = syncSparks()
-check(sparkSettings == nil, "the spark settings went over on the first update and are not sent again")
-setting("Effects", "SparkLightRadius", 150)
-sparkSettings = syncSparks()
-check(sparkSettings and sparkSettings.player == stub.player and sparkSettings.variety
-      and sparkSettings.mediumArmour and sparkSettings.light and sparkSettings.light.radius == 150,
-      "a settings change sends them to the global script again")
-setting("Effects", "SparkLightRadius", 160)
-syncSparks()
-check(#stub.impactEffectHandlers == 1, "which hooks into the effects Impact Effects spawns")
-
+-- Sparks light their own impact, so the warm one keeps out of the way.
 local hitPos = stub.vec3(10, 20, 30)
-settleLights()
-local fx = impactEffect("Metal", { { mesh = METAL, kind = "spark" } }, hitPos)
-local spawned = stub.spawnedVfx
-check(fx.noVfx and fx.noVfx[1] and #spawned == 1 and spawned[1].pos == hitPos
-      and isBurst(spawned[1].model, "metal") and spawned[1].options.scale == 1,
-      "a metal spark is cancelled and one of our metal bursts thrown in its place")
-local sparkLit = litAt(hitPos)
-check(sparkLit and sparkLit.recordColor == "0.62,0.78", "and it is lit, in the cold spark colour")
+stub.equipped = { kind = "weapon", weaponType = 1 } -- a sword: only a swung weapon sparks
 stub.sentGlobalEvents = {}
+stub.impactActorHandlers[1](stub.newObject("npc"), { material = "ParryArmorHeavy", hitPos = hitPos })
+lights = sentLights()
+check(#lights == 1 and lights[1].b > lights[1].r, "a spark material lights it cold")
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-check(#sentLights() == 1, "and the hit light still comes on top of the spark light")
-
-local seen, variants = {}, 0
-for _ = 1, 40 do
-    impactEffect("Metal", { { mesh = METAL, kind = "spark" } }, hitPos)
-    seen[stub.spawnedVfx[1].model] = true
-end
-for _ in pairs(seen) do variants = variants + 1 end
-check(variants > 1, "several different bursts are thrown (" .. variants .. " over 40 hits)")
-
-settleLights()
-local dustPos = stub.vec3(11, 21, 31)
-fx = impactEffect("Stone", { DUST, { mesh = METAL, kind = "spark" } }, dustPos)
-spawned = stub.spawnedVfx
-check(fx.noVfx and not fx.noVfx[1] and fx.noVfx[2] and #spawned == 1 and isBurst(spawned[1].model, "metal"),
-      "dust and a spark: only the spark is cancelled, for one of our bursts; the dust is Impact Effects' to spawn")
-check(litAt(dustPos) ~= nil, "lit as well")
-
-settleLights()
-local heavyPos = stub.vec3(15, 25, 35)
-impactEffect("ParryArmorHeavy", { { mesh = PARRY, scale = 0.5, kind = "spark" } }, heavyPos)
-spawned = stub.spawnedVfx
-check(#spawned == 1 and isBurst(spawned[1].model, "parry") and spawned[1].options.scale == 0.5,
-      "heavy armour gets a parry burst, at the half size Impact Effects gives it")
-
-settleLights()
-local mediumPos = stub.vec3(16, 26, 36)
-fx = impactEffect("ParryArmorMedium", {}, mediumPos)
-spawned = stub.spawnedVfx
-check(fx.noVfx == nil and #spawned == 1 and isBurst(spawned[1].model, "parry") and spawned[1].options.scale == 0.5
-      and litAt(mediumPos) ~= nil, "medium armour, which Impact Effects gives nothing, sparks and is lit")
-
-local woodPos = stub.vec3(12, 22, 32)
-fx = impactEffect("Wood", { DUST }, woodPos)
-check(fx.noVfx == nil and #stub.spawnedVfx == 0 and litAt(woodPos) == nil,
-      "dust alone - a crate - is left to Impact Effects, and not lit")
-
-settleLights()
-local otherPos = stub.vec3(17, 27, 37)
-fx = impactEffect("Metal", { { mesh = "meshes/othermod/spark.nif", kind = "spark" } }, otherPos)
-check(fx.noVfx == nil and #stub.spawnedVfx == 0 and litAt(otherPos) ~= nil,
-      "a spark we have no bursts for is left to Impact Effects, and lit")
-
--- Other mods' handlers can get there first.
-local takenPos = stub.vec3(20, 30, 40)
-fx = impactEffect("Metal", { { mesh = METAL, kind = "spark" } }, takenPos, true)
-check(fx.noVfx == true and #stub.spawnedVfx == 0 and litAt(takenPos) == nil,
-      "an effect another mod cancelled whole is left alone")
-local theirs = { true }
-fx = impactEffect("Stone", { DUST, { mesh = METAL, kind = "spark" } }, dustPos, theirs)
-check(fx.noVfx == theirs and theirs[1] and theirs[2] and #stub.spawnedVfx == 1,
-      "and one that cancelled a part of it keeps its cancel, with ours added")
-
-stub.spawnedVfx = {}
-fx = { source = "shield", actor = stub.player, bone = "Shield Bone",
-    vfx = { { mesh = "meshes/e/impact/shieldBlock.nif", kind = "spark" } } }
-stub.impactEffectHandlers[1](fx)
-check(fx.noVfx == nil and #stub.spawnedVfx == 0, "a block's sparks, attached to the shield, are left alone")
+check(#sentLights() == 1, "and the warm light does not pile on top of it")
 
 -- A bare body part reaches the hook only because of the one-line patch in
 -- Impact Effects (docs/impact-effects-unarmored.md), and must stay silent.
 local bare = { material = "Unarmored", hitPos = hitPos }
 stub.impactActorHandlers[1](stub.newObject("npc"), bare)
 check(bare.noSound, "an unarmoured hit is kept silent, that material has no sound of its own")
-check(#stub.impactObjectHandlers == 0, "and nothing listens to hits on the world: those come as effects")
-settleLights()
+
+-- Striking the world still goes through the object handler.
+check(#stub.impactObjectHandlers == 1, "the object handler is registered")
+stub.realTime = stub.realTime + 1
+stub.sentGlobalEvents = {}
+stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Metal", hitPos = hitPos })
+lights = sentLights()
+check(#lights == 1 and lights[1].b > lights[1].r, "hitting metal scenery lights it cold")
+
+stub.sentGlobalEvents = {}
+stub.impactObjectHandlers[1](stub.newObject("static"), { material = "Wood", hitPos = hitPos })
+check(#sentLights() == 0, "but hitting a crate lights nothing")
 
 print("\n== shake scaled by how hard the blow landed ==")
 -- The camera's wobble is random frame to frame, but how long it wobbles for is
 -- not, and the same multiplier drives both. So measure the length.
-local function shakeFrames(fraction, extra)
-    local data = { victim = victim, fraction = fraction, hit = true, own = true, source = "melee" }
-    for k, v in pairs(extra or {}) do data[k] = v end
-    player.eventHandlers.CJ_DamageDealt(data)
+local function shakeFrames(fraction)
+    player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = fraction })
     local frames = 0
     for _ = 1, 500 do
         stub.realTime = stub.realTime + 0.005
@@ -444,9 +332,6 @@ check(math.abs(solid / scratch - 2) < 0.25,
 setting("Camera", "ShakeScalesWithDamage", false)
 check(shakeFrames(0.05) == shakeFrames(0.50), "with the setting off, every blow shakes the same")
 setting("Camera", "ShakeScalesWithDamage", true)
-check(shakeFrames(0.50, { source = "ranged" }) == 0 and shakeFrames(0.50, { source = "magic" }) == 0
-      and shakeFrames(0.50, { own = false }) == 0,
-      "anything but the player's own melee blow - a shot, a spell, a summon's blow, a burn - does not shake")
 
 print("\n== hit markers ==")
 local hm = loadScript("hitmarkers.lua")
@@ -522,7 +407,6 @@ check(next(stub.settingsStore.SettingsCombatJuiceMarkers.MarkerSizes) == nil,
       "and one button puts every marker back to its own size")
 
 setting("Markers", "MarkerSizes", { faded_triangles = 2 })
-stub.realTime = stub.realTime + 1 -- clear of the marker throttle
 player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
 check(math.abs(stub.hud.layout.content.faded_triangles.content[1].props.size.x - 21) < 1e-6,
       "in game, the hit marker is drawn at its own size")
@@ -684,122 +568,90 @@ interfaces.DynamicReticle = nil
 check(pcall(killWith, "cross"), "and so is having no Dynamic Reticle at all")
 setting("Markers", "KillMarker", "cross")
 
--- Markers and sounds each have a setting per kind of hit: melee, ranged, magic.
--- Clear of the marker throttle before each.
-local function soundsFor(data)
+stub.stance = 1                        -- weapon drawn
+stub.equipped = { kind = "weapon", weaponType = 9 }  -- a bow, which the defaults sound on
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 1, "a hit plays the hit marker sound")
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.9, lethal = true })
+check(#stub.sentSounds == 1 and stub.sentSounds[1].path:find("bass_stab"),
+      "and a kill plays the kill sound instead")
+
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.1, weak = true })
+check(#stub.sentSounds == 0, "a glancing hit is silent")
+
+stub.equipped = { kind = "weapon", weaponType = 1 }  -- a sword: off by default
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 0, "and melee is silent until switched on")
+setting("MarkerSounds", "MeleeSound", true)
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
+check(#stub.sentSounds == 1, "once switched on, melee plays it")
+
+print("\n== fists do not spark ==")
+local swordBefore = stub.equipped
+stub.equipped = nil
+local function punch(handlers, target, material)
     stub.realTime = stub.realTime + 1
-    stub.sentSounds = {}
-    data.victim = victim
-    data.fraction = data.fraction or 0.2
-    player.eventHandlers.CJ_DamageDealt(data)
-    return #stub.sentSounds
+    stub.sentGlobalEvents = {}
+    local var = { material = material, hitPos = hitPos }
+    handlers[1](target, var)
+    local vfx = 0
+    for _, ev in ipairs(stub.sentGlobalEvents) do if ev.name == "SpawnVfx" then vfx = vfx + 1 end end
+    return vfx, #sentLights(), var
 end
-check(soundsFor({ source = "ranged" }) == 1, "a ranged hit plays the hit marker sound")
-check(soundsFor({ source = "ranged", lethal = true }) == 1 and stub.sentSounds[1].path:find("bass_stab"),
-      "and a ranged kill the kill sound")
-check(soundsFor({ source = "ranged", weak = true }) == 0, "a glancing hit is silent")
-check(soundsFor({ source = "melee" }) == 0 and soundsFor({ source = "melee", lethal = true }) == 0,
-      "melee is silent by default")
-check(soundsFor({ source = "magic" }) == 0 and soundsFor({ source = "magic", lethal = true }) == 1,
-      "and magic only sounds on a kill")
-setting("MarkerSounds", "MeleeSounds", "Only on hit")
-check(soundsFor({ source = "melee" }) == 1, "once switched on, melee plays it")
+local vfx, lit = punch(stub.impactObjectHandlers, stub.newObject("static"), "Stone")
+check(vfx == 0 and lit == 0, "a punch on stone throws no sparks and no spark light")
+vfx, lit = punch(stub.impactObjectHandlers, stub.newObject("static"), "Metal")
+check(vfx == 0 and lit == 0, "nor on bare metal")
+vfx, lit = punch(stub.impactActorHandlers, stub.newObject("npc"), "ParryArmorHeavy")
+check(vfx == 0 and lit == 0, "nor on heavy armour")
+local _, _, var = punch(stub.impactActorHandlers, stub.newObject("npc"), "Unarmored")
+check(var.noSound == true, "a bare body part is still kept quiet")
+stub.equipped = { kind = "weapon", weaponType = 9 }
+vfx = punch(stub.impactObjectHandlers, stub.newObject("static"), "Metal")
+check(vfx == 0, "and a bow held in hand does not count as a blade")
+stub.equipped = swordBefore
 
-local hitPart = stub.hud.layout.content.faded_triangles.content[1]
-local killPart = stub.hud.layout.content.cross.content[1]
-local function settle() for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end end
-settle()
-soundsFor({ source = "melee", lethal = true })
-player.engineHandlers.onUpdate(0.05)
-check(killPart.props.alpha > 0 and #stub.sentSounds == 1,
-      "a melee kill shows the kill marker, and with kills off for its sound, the hit sound")
-settle()
-setting("Markers", "MeleeMarkers", "Only on hit")
-soundsFor({ source = "melee", lethal = true })
-player.engineHandlers.onUpdate(0.05)
-check(killPart.props.alpha == 0 and hitPart.props.alpha > 0,
-      "with kills off for its markers, a killing blow shows the hit marker instead")
-settle()
-setting("Markers", "MeleeMarkers", "Only on death")
-soundsFor({ source = "melee" })
-player.engineHandlers.onUpdate(0.05)
-check(hitPart.props.alpha == 0 and #stub.sentSounds == 1,
-      "with hits off for its markers, a blow shows none - its sound, set apart, still plays")
-setting("Markers", "MeleeMarkers", "None")
-setting("MarkerSounds", "MeleeSounds", "None")
-soundsFor({ source = "melee", lethal = true })
-player.engineHandlers.onUpdate(0.05)
-check(killPart.props.alpha == 0 and hitPart.props.alpha == 0 and #stub.sentSounds == 0,
-      "and with both at none, not even a kill shows or sounds")
-setting("Markers", "MeleeMarkers", "On hit and on death")
-setting("MarkerSounds", "MeleeSounds", "None")
+print("\n== spark variety ==")
+local function sentVfx()
+    local out = {}
+    for _, ev in ipairs(stub.sentGlobalEvents) do
+        if ev.name == "SpawnVfx" then table.insert(out, ev.data) end
+    end
+    return out
+end
 
--- Markers and their sounds come at most every third of a second, whichever
--- enemy they are for - Dynamic Reticle's throttle.
-soundsFor({ source = "ranged" })
-stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, source = "ranged" })
-check(#stub.sentSounds == 0, "health coming off right after a marker - a burn - waits out the throttle")
-stub.realTime = stub.realTime + 0.4
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, source = "ranged" })
-check(#stub.sentSounds == 1, "and shows once it has passed")
-stub.sentSounds = {}
-stub.realTime = stub.realTime + 0.15
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true, source = "ranged" })
-check(#stub.sentSounds == 1, "a blow that came through I.Combat shows at once, whatever the throttle")
-stub.sentSounds = {}
-stub.realTime = stub.realTime + 0.05
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true, source = "ranged" })
-check(#stub.sentSounds == 0, "unless one showed in the same moment - its weapon's enchantment, a frame before")
-stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, lethal = true, source = "ranged" })
-check(#stub.sentSounds == 1, "a kill shows whatever the throttle")
+local seen, taken = {}, 0
+for _ = 1, 40 do
+    stub.sentGlobalEvents = {}
+    local var = { material = "Metal", hitPos = hitPos }
+    stub.impactActorHandlers[1](stub.newObject("npc"), var)
+    if var.noVfx then taken = taken + 1 end
+    for _, v in ipairs(sentVfx()) do seen[v.model] = true end
+end
+check(taken == 40, "a plain metal impact is taken over, so the burst can be chosen")
+local variants = 0
+for _ in pairs(seen) do variants = variants + 1 end
+check(variants > 1, "and several different bursts are played (" .. variants .. " over 40 hits)")
 
--- A blow while the marker still shows starts it over.
-for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
-local replayed = stub.hud.layout.content.faded_triangles.content[1]
-stub.realTime = stub.realTime + 1
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true })
-for _ = 1, 38 do player.engineHandlers.onUpdate(0.016) end -- 0.6s: well into its fade
-stub.realTime = stub.realTime + 1
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true })
-local at = replayed.props.relativePosition
-check(replayed.props.alpha == 0 and math.abs(at.x - 0.5) < 1e-6 and math.abs(at.y - 0.5) < 1e-6,
-      "a marker played again while it fades is back in the middle at once, unseen")
-for _ = 1, 6 do player.engineHandlers.onUpdate(0.016) end -- 0.1s
-check(replayed.props.alpha > 0.9, "and springs out at full strength, its old fade letting go of it")
-for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+stub.sentGlobalEvents = {}
+local var = { material = "Stone", hitPos = hitPos }
+stub.impactActorHandlers[1](stub.newObject("npc"), var)
+check(not var.noVfx, "an impact that also throws dust keeps its own effect")
+local extra = sentVfx()
+check(#extra == 1 and extra[1].model:find("cluster"),
+      "and gets a cluster of hard-thrown sparks over the top")
 
-print("\n== spark settings ==")
 setting("Effects", "SparkVariety", false)
-syncSparks()
-settleLights()
-local plainPos = stub.vec3(13, 23, 33)
-fx = impactEffect("Stone", { DUST, { mesh = METAL, kind = "spark" } }, plainPos)
-check(fx.noVfx == nil and #stub.spawnedVfx == 0 and litAt(plainPos) ~= nil,
-      "with variety off, Impact Effects spawns its own effects, and they are still lit")
-impactEffect("ParryArmorMedium", {}, stub.vec3(18, 28, 38))
-check(#stub.spawnedVfx == 1 and stub.spawnedVfx[1].model == PARRY,
-      "medium armour still sparks, always with the same burst")
+stub.sentGlobalEvents = {}
+var = { material = "Metal", hitPos = hitPos }
+stub.impactActorHandlers[1](stub.newObject("npc"), var)
+check(not var.noVfx and #sentVfx() == 0, "with variety off, Impact Effects plays its own mesh")
 setting("Effects", "SparkVariety", true)
-
-setting("Effects", "SparksOnMediumArmor", false)
-syncSparks()
-settleLights()
-local bareMedium = stub.vec3(19, 29, 39)
-impactEffect("ParryArmorMedium", {}, bareMedium)
-check(#stub.spawnedVfx == 0 and litAt(bareMedium) == nil, "sparks on medium armour can be switched off on their own")
-setting("Effects", "SparksOnMediumArmor", true)
-
-setting("Effects", "SparkLightEnabled", false)
-syncSparks()
-settleLights()
-local darkPos = stub.vec3(14, 24, 34)
-impactEffect("Metal", { { mesh = METAL, kind = "spark" } }, darkPos)
-check(#stub.spawnedVfx == 1 and litAt(darkPos) == nil, "and so can the spark light")
-setting("Effects", "SparkLightEnabled", true)
-syncSparks()
-settleLights()
 
 print("\n== the global script carries it out ==")
 stub.timeScale = 1
@@ -906,73 +758,6 @@ local killed
 for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_ActorKilled" then killed = ev end end
 check(killed ~= nil, "a lethal blow from the player reports a kill")
 
-print("\n== spells, and hits by others ==")
--- A spell never goes through I.Combat: the health it takes comes with no hit,
--- and the spell still on the victim says whose it was.
-local function spellOn(id, caster, effectId)
-    return { activeSpellId = id, caster = caster, effects = { { id = effectId or "firedamage" } } }
-end
--- A health loss, struck by `hit` or by nothing; returns what the player was told.
-local function lose(previousHealth, health, hit)
-    stub.sentObjectEvents = {}
-    stub.damageListeners[1]({ actor = npc, previousHealth = previousHealth, health = health,
-        baseHealth = 40, hit = hit })
-    local told = {}
-    for _, ev in ipairs(stub.sentObjectEvents) do
-        if ev.target == stub.player then told[ev.name] = ev.data end
-    end
-    return told
-end
-local swungByPlayer = { attacker = stub.player, successful = true, sourceType = "melee" }
-local shotByPlayer = { attacker = stub.player, successful = true, sourceType = "ranged" }
-local companion = stub.newObject("npc")
-
--- Not fighting the player: only what is theirs is told.
-stub.mssTargets = nil
-npc.activeSpells = { spellOn("1", stub.player) }
-local dealt = lose(40, 30).CJ_DamageDealt
-check(dealt and dealt.fraction == 0.25 and not dealt.lethal and not dealt.hit and dealt.own
-      and dealt.source == "magic",
-      "health taken by the player's spell is theirs, even on an actor not fighting them, but no blow")
-dealt = lose(30, 29.9).CJ_DamageDealt
-check(dealt and not dealt.hit, "and so is its burn")
-local burnKill = lose(29.9, 0)
-check(burnKill.CJ_DamageDealt and burnKill.CJ_DamageDealt.lethal and burnKill.CJ_ActorKilled,
-      "and the burn that kills is the kill, marked and reported")
-
-npc.activeSpells = nil
-dealt = lose(40, 30, swungByPlayer).CJ_DamageDealt
-check(dealt and dealt.hit and dealt.own and dealt.source == "melee",
-      "the player's melee blow, off its hit alone, is theirs, on one not fighting them - a guard")
-dealt = lose(30, 25, shotByPlayer).CJ_DamageDealt
-check(dealt and dealt.hit and dealt.own and dealt.source == "ranged", "and so is a shot of theirs, as ranged")
-check(next(lose(25, 20, { attacker = companion, successful = true, sourceType = "melee" })) == nil,
-      "someone else's blow on one not fighting the player tells them nothing")
-check(next(lose(20, 15)) == nil, "nor does a loss nothing explains")
-npc.activeSpells = { spellOn("2", companion) }
-check(next(lose(40, 30)) == nil, "nor someone else's spell")
-npc.activeSpells = { spellOn("3", stub.player, "paralyze") }
-check(next(lose(40, 30)) == nil, "nor a spell of the player's that takes no health")
-
--- Fighting the player: whatever hurts it is shown to them, as Dynamic Reticle
--- did - their summon's blows, their companion's.
-stub.mssTargets = { stub.player }
-npc.activeSpells = nil
-dealt = lose(40, 30, { attacker = companion, successful = true, sourceType = "melee" }).CJ_DamageDealt
-check(dealt and dealt.fraction == 0.25 and dealt.hit and not dealt.own and dealt.source == "melee",
-      "a summon's or a companion's blow on an enemy of the player's is marked for them, as not theirs")
-npc.activeSpells = { spellOn("4", companion) }
-dealt = lose(30, 25).CJ_DamageDealt
-check(dealt and not dealt.hit and not dealt.own and dealt.source == "magic", "and so is their spell")
-npc.activeSpells = nil
-dealt = lose(25, 20).CJ_DamageDealt
-check(dealt and not dealt.hit, "and a loss nothing explains - lava - on an enemy of theirs")
-stub.realTime = stub.realTime + 2 -- the player's own last blow long past
-local otherKill = lose(20, 0)
-check(otherKill.CJ_DamageDealt and otherKill.CJ_DamageDealt.lethal and otherKill.CJ_ActorKilled == nil,
-      "the one that kills gets the kill marker - and none of the player's own kill effects")
-stub.mssTargets = nil
-
 print("\n== gear knocked loose on death ==")
 local SLOT = stub.packages["openmw.types"].Actor.EQUIPMENT_SLOT
 local LOOSE = "SettingsCombatJuiceLooseGear"
@@ -1074,38 +859,6 @@ if okLoad then
     check(sentSlowdown() ~= nil, "and kills still slow time")
     check(pcall(player2.engineHandlers.onFrame), "and onFrame does not touch the missing shader")
 end
-
-print("\n== an Impact Effects too old for the effect API ==")
-local function toldToUpdate(from)
-    local told = 0
-    for i = from + 1, #stub.log do
-        if stub.log[i]:find("I require a newer version of the Impact Effects mod", 1, true) then told = told + 1 end
-    end
-    return told
-end
-stub.install(stub.player)
-stub.enableImpactEffects(108)
-stub.settingsPages, stub.settingsGroups = {}, {}
-local oldGlobal = loadScript("global.lua")
-local oldPlayer = loadScript("player.lua")
-local logFrom = #stub.log
-stub.sentGlobalEvents = {}
-oldPlayer.engineHandlers.onUpdate(0.016)
-oldPlayer.engineHandlers.onUpdate(0.016)
-check(toldToUpdate(logFrom) == 1, "the player is asked, once, to update Impact Effects")
-check(#stub.impactActorHandlers == 0, "and nothing is hooked into it")
-for _, ev in ipairs(stub.sentGlobalEvents) do
-    if ev.name == "CJ_SparkSettings" then oldGlobal.eventHandlers.CJ_SparkSettings(ev.data) end
-end
-check(#stub.impactEffectHandlers == 0,
-      "the global script leaves it alone as well")
-
-stub.packages["openmw.interfaces"].impactEffects = nil
-stub.settingsPages, stub.settingsGroups = {}, {}
-local barePlayer = loadScript("player.lua")
-logFrom = #stub.log
-barePlayer.engineHandlers.onUpdate(0.016)
-check(toldToUpdate(logFrom) == 0, "without Impact Effects at all nobody is asked anything")
 
 print(string.format("\n%d checks, %d failures", checks, failures))
 os.exit(failures == 0 and 0 or 1)
