@@ -71,7 +71,7 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 9, "eight settings groups from the player - one only the logo - and one from global.lua")
+check(#stub.settingsGroups == 10, "nine settings groups from the player - one only the logo - and one from global.lua")
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -202,7 +202,7 @@ local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
 stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25 })
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25, hit = true, own = true, source = "melee" })
 frame()
 local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw)
     + math.abs(stub.cameraExtras.roll)
@@ -304,8 +304,10 @@ check(#sentLights() == 0, "but hitting a crate lights nothing")
 print("\n== shake scaled by how hard the blow landed ==")
 -- The camera's wobble is random frame to frame, but how long it wobbles for is
 -- not, and the same multiplier drives both. So measure the length.
-local function shakeFrames(fraction)
-    player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = fraction })
+local function shakeFrames(fraction, extra)
+    local data = { victim = victim, fraction = fraction, hit = true, own = true, source = "melee" }
+    for k, v in pairs(extra or {}) do data[k] = v end
+    player.eventHandlers.CJ_DamageDealt(data)
     local frames = 0
     for _ = 1, 500 do
         stub.realTime = stub.realTime + 0.005
@@ -332,6 +334,9 @@ check(math.abs(solid / scratch - 2) < 0.25,
 setting("Camera", "ShakeScalesWithDamage", false)
 check(shakeFrames(0.05) == shakeFrames(0.50), "with the setting off, every blow shakes the same")
 setting("Camera", "ShakeScalesWithDamage", true)
+check(shakeFrames(0.50, { source = "ranged" }) == 0 and shakeFrames(0.50, { source = "magic" }) == 0
+      and shakeFrames(0.50, { own = false }) == 0,
+      "anything but the player's own melee blow - a shot, a spell, a summon's blow, a burn - does not shake")
 
 print("\n== hit markers ==")
 local hm = loadScript("hitmarkers.lua")
@@ -407,6 +412,7 @@ check(next(stub.settingsStore.SettingsCombatJuiceMarkers.MarkerSizes) == nil,
       "and one button puts every marker back to its own size")
 
 setting("Markers", "MarkerSizes", { faded_triangles = 2 })
+stub.realTime = stub.realTime + 1 -- clear of the marker throttle
 player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
 check(math.abs(stub.hud.layout.content.faded_triangles.content[1].props.size.x - 21) < 1e-6,
       "in game, the hit marker is drawn at its own size")
@@ -454,6 +460,7 @@ for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
 
 print("\n== enchanted hit lights ==")
 local enchantStore = stub.settingsStore.SettingsCombatJuiceEnchantLights
+local colorStore = stub.settingsStore.SettingsCombatJuiceMagicColors
 local function effect(id, school, color) return { id = id, effect = { school = school, color = color } } end
 local violet = { r = 0.62, g = 0.22, b = 0.85 }
 stub.enchantments.fire_en = { type = 1, effects = { effect("firedamage", "destruction", { r = 1, g = 0.5, b = 0.2 }) } }
@@ -482,15 +489,15 @@ stub.equipped = sword
 player.engineHandlers.onUpdate(0.016) -- the charge is read
 sword.charge = 90                     -- and the blow spends some
 local light = strike("fire_sword")
-check(same(light, enchantStore.EnchantFireColor) and light.power == enchantStore.EnchantLightPower,
+check(same(light, colorStore.FireColor) and light.power == enchantStore.EnchantLightPower,
       "a fire enchantment that fired lights the hit in the fire colour")
 check(same(strike("fire_sword"), effectStore.HitLightColor),
       "a blow it had no charge to fire on is lit as a plain hit")
 sword.charge = 80
-check(same(strike("fire_sword"), enchantStore.EnchantFireColor),
+check(same(strike("fire_sword"), colorStore.FireColor),
       "the charge drop is seen as the hit is reported, even before an update reads it")
-check(same(strike("bow", "frost_arrow"), enchantStore.EnchantFrostColor), "enchanted arrows always fire")
-check(same(strike("star"), enchantStore.EnchantRestorationColor),
+check(same(strike("bow", "frost_arrow"), colorStore.FrostColor), "enchanted arrows always fire")
+check(same(strike("star"), colorStore.RestorationColor),
       "and so do thrown weapons; an effect that is no element takes its school's colour")
 local rose = { kind = "weapon", recordId = "rose", charge = 160 }
 stub.equipped = rose
@@ -508,6 +515,29 @@ setting("EnchantLights", "EnchantLightEnabled", false)
 sword.charge = 70
 check(same(strike("fire_sword"), effectStore.HitLightColor), "and all of it can be switched off")
 setting("EnchantLights", "EnchantLightEnabled", true)
+
+print("\n== spell hit markers in the colour of their magic ==")
+stub.magicEffects.frostdamage = { school = "destruction" }
+stub.magicEffects.damagehealth = { school = "destruction" }
+stub.magicEffects.h2h_venom = { school = "destruction", color = violet }
+local tinted = stub.hud.layout.content.faded_triangles.content[1]
+local function markedIn(data)
+    for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+    stub.realTime = stub.realTime + 1
+    data.victim, data.fraction, data.source = victim, 0.2, data.source or "magic"
+    player.eventHandlers.CJ_DamageDealt(data)
+    return tinted.props.color
+end
+check(same(markedIn({ effect = "frostdamage" }), colorStore.FrostColor),
+      "a spell's hit marker takes its element's colour from Magic Colours")
+check(same(markedIn({ effect = "damagehealth" }), colorStore.DestructionColor), "anything else its school's")
+check(same(markedIn({ effect = "h2h_venom" }), violet), "and a mod's own effect the colour on its record")
+check(markedIn({ source = "melee", hit = true }) == markerStore.MarkerColor, "a blow keeps the hit marker colour")
+check(markedIn({}) == markerStore.MarkerColor, "and so does a loss no magic explains")
+setting("Markers", "SpellMarkerColors", false)
+check(markedIn({ effect = "frostdamage" }) == markerStore.MarkerColor, "spell colours can be switched off")
+setting("Markers", "SpellMarkerColors", true)
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
 
 print("\n== blows that do nothing ==")
 local function nothingDone()
@@ -530,7 +560,7 @@ stub.realTime = stub.realTime + 1
 stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, noEffect = true,
     hitPos = stub.vec3(0, 100, 50), weapon = "fire_sword" })
-check(same(sentLights()[1], enchantStore.EnchantFireColor),
+check(same(sentLights()[1], colorStore.FireColor),
       "an enchantment that fired into a shield still lights in its colour")
 stub.equipped = heldBefore
 
@@ -568,28 +598,91 @@ interfaces.DynamicReticle = nil
 check(pcall(killWith, "cross"), "and so is having no Dynamic Reticle at all")
 setting("Markers", "KillMarker", "cross")
 
-stub.stance = 1                        -- weapon drawn
-stub.equipped = { kind = "weapon", weaponType = 9 }  -- a bow, which the defaults sound on
-stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
-check(#stub.sentSounds == 1, "a hit plays the hit marker sound")
-stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.9, lethal = true })
-check(#stub.sentSounds == 1 and stub.sentSounds[1].path:find("bass_stab"),
-      "and a kill plays the kill sound instead")
+-- Markers and sounds each have a setting per kind of hit: melee, ranged, magic.
+-- Clear of the marker throttle before each.
+local function soundsFor(data)
+    stub.realTime = stub.realTime + 1
+    stub.sentSounds = {}
+    data.victim = victim
+    data.fraction = data.fraction or 0.2
+    player.eventHandlers.CJ_DamageDealt(data)
+    return #stub.sentSounds
+end
+check(soundsFor({ source = "ranged" }) == 1, "a ranged hit plays the hit marker sound")
+check(soundsFor({ source = "ranged", lethal = true }) == 1 and stub.sentSounds[1].path:find("bass_stab"),
+      "and a ranged kill the kill sound")
+check(soundsFor({ source = "ranged", weak = true }) == 0, "a glancing hit is silent")
+check(soundsFor({ source = "melee" }) == 0 and soundsFor({ source = "melee", lethal = true }) == 0,
+      "melee is silent by default")
+check(soundsFor({ source = "magic" }) == 0 and soundsFor({ source = "magic", lethal = true }) == 1,
+      "and magic only sounds on a kill")
+setting("MarkerSounds", "MeleeSounds", "Only on hit")
+check(soundsFor({ source = "melee" }) == 1, "once switched on, melee plays it")
 
-stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.1, weak = true })
-check(#stub.sentSounds == 0, "a glancing hit is silent")
+local hitPart = stub.hud.layout.content.faded_triangles.content[1]
+local killPart = stub.hud.layout.content.cross.content[1]
+local function settle() for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end end
+settle()
+soundsFor({ source = "melee", lethal = true })
+player.engineHandlers.onUpdate(0.05)
+check(killPart.props.alpha > 0 and #stub.sentSounds == 1,
+      "a melee kill shows the kill marker, and with kills off for its sound, the hit sound")
+settle()
+setting("Markers", "MeleeMarkers", "Only on hit")
+soundsFor({ source = "melee", lethal = true })
+player.engineHandlers.onUpdate(0.05)
+check(killPart.props.alpha == 0 and hitPart.props.alpha > 0,
+      "with kills off for its markers, a killing blow shows the hit marker instead")
+settle()
+setting("Markers", "MeleeMarkers", "Only on death")
+soundsFor({ source = "melee" })
+player.engineHandlers.onUpdate(0.05)
+check(hitPart.props.alpha == 0 and #stub.sentSounds == 1,
+      "with hits off for its markers, a blow shows none - its sound, set apart, still plays")
+setting("Markers", "MeleeMarkers", "None")
+setting("MarkerSounds", "MeleeSounds", "None")
+soundsFor({ source = "melee", lethal = true })
+player.engineHandlers.onUpdate(0.05)
+check(killPart.props.alpha == 0 and hitPart.props.alpha == 0 and #stub.sentSounds == 0,
+      "and with both at none, not even a kill shows or sounds")
+setting("Markers", "MeleeMarkers", "On hit and on death")
+setting("MarkerSounds", "MeleeSounds", "None")
 
-stub.equipped = { kind = "weapon", weaponType = 1 }  -- a sword: off by default
+-- Markers and their sounds come at most every third of a second, whichever
+-- enemy they are for - Dynamic Reticle's throttle.
+soundsFor({ source = "ranged" })
 stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
-check(#stub.sentSounds == 0, "and melee is silent until switched on")
-setting("MarkerSounds", "MeleeSound", true)
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, source = "ranged" })
+check(#stub.sentSounds == 0, "health coming off right after a marker - a burn - waits out the throttle")
+stub.realTime = stub.realTime + 0.4
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, source = "ranged" })
+check(#stub.sentSounds == 1, "and shows once it has passed")
 stub.sentSounds = {}
-player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, lethal = false })
-check(#stub.sentSounds == 1, "once switched on, melee plays it")
+stub.realTime = stub.realTime + 0.15
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true, source = "ranged" })
+check(#stub.sentSounds == 1, "a blow that came through I.Combat shows at once, whatever the throttle")
+stub.sentSounds = {}
+stub.realTime = stub.realTime + 0.05
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true, source = "ranged" })
+check(#stub.sentSounds == 0, "unless one showed in the same moment - its weapon's enchantment, a frame before")
+stub.sentSounds = {}
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.01, lethal = true, source = "ranged" })
+check(#stub.sentSounds == 1, "a kill shows whatever the throttle")
+
+-- A blow while the marker still shows starts it over.
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
+local replayed = stub.hud.layout.content.faded_triangles.content[1]
+stub.realTime = stub.realTime + 1
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true })
+for _ = 1, 38 do player.engineHandlers.onUpdate(0.016) end -- 0.6s: well into its fade
+stub.realTime = stub.realTime + 1
+player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.2, hit = true })
+local at = replayed.props.relativePosition
+check(replayed.props.alpha == 0 and math.abs(at.x - 0.5) < 1e-6 and math.abs(at.y - 0.5) < 1e-6,
+      "a marker played again while it fades is back in the middle at once, unseen")
+for _ = 1, 6 do player.engineHandlers.onUpdate(0.016) end -- 0.1s
+check(replayed.props.alpha > 0.9, "and springs out at full strength, its old fade letting go of it")
+for _ = 1, 120 do player.engineHandlers.onUpdate(0.016) end
 
 print("\n== fists do not spark ==")
 local swordBefore = stub.equipped
@@ -760,6 +853,79 @@ stub.damageListeners[1]({ actor = npc, previousHealth = 10, health = 0, baseHeal
 local killed
 for _, ev in ipairs(stub.sentObjectEvents) do if ev.name == "CJ_ActorKilled" then killed = ev end end
 check(killed ~= nil, "a lethal blow from the player reports a kill")
+
+print("\n== spells, and hits by others ==")
+-- A spell never goes through I.Combat: the health it takes comes with no hit,
+-- and the spell still on the victim says whose it was.
+local function spellOn(id, caster, effectId)
+    return { activeSpellId = id, caster = caster, effects = { { id = effectId or "firedamage" } } }
+end
+-- A health loss, struck by `hit` or by nothing; returns what the player was told.
+local function lose(previousHealth, health, hit)
+    stub.sentObjectEvents = {}
+    stub.damageListeners[1]({ actor = npc, previousHealth = previousHealth, health = health,
+        baseHealth = 40, hit = hit })
+    local told = {}
+    for _, ev in ipairs(stub.sentObjectEvents) do
+        if ev.target == stub.player then told[ev.name] = ev.data end
+    end
+    return told
+end
+local swungByPlayer = { attacker = stub.player, successful = true, sourceType = "melee" }
+local shotByPlayer = { attacker = stub.player, successful = true, sourceType = "ranged" }
+local companion = stub.newObject("npc")
+
+-- Not fighting the player: only what is theirs is told.
+stub.mssTargets = nil
+npc.activeSpells = { spellOn("1", stub.player) }
+local dealt = lose(40, 30).CJ_DamageDealt
+check(dealt and dealt.fraction == 0.25 and not dealt.lethal and not dealt.hit and dealt.own
+      and dealt.source == "magic" and dealt.effect == "firedamage",
+      "health taken by the player's spell is theirs, even on an actor not fighting them, but no blow - and names its magic")
+dealt = lose(30, 29.9).CJ_DamageDealt
+check(dealt and not dealt.hit, "and so is its burn")
+local burnKill = lose(29.9, 0)
+check(burnKill.CJ_DamageDealt and burnKill.CJ_DamageDealt.lethal and burnKill.CJ_ActorKilled,
+      "and the burn that kills is the kill, marked and reported")
+
+npc.activeSpells = { spellOn("9", stub.player, "frostdamage") }
+dealt = lose(40, 30, swungByPlayer).CJ_DamageDealt
+check(dealt and dealt.hit and dealt.own and dealt.source == "melee",
+      "the player's melee blow, off its hit alone, is theirs, on one not fighting them - a guard")
+check(dealt and dealt.effect == nil, "and names no magic, even with a spell of theirs burning on them")
+npc.activeSpells = nil
+dealt = lose(30, 25, shotByPlayer).CJ_DamageDealt
+check(dealt and dealt.hit and dealt.own and dealt.source == "ranged", "and so is a shot of theirs, as ranged")
+check(next(lose(25, 20, { attacker = companion, successful = true, sourceType = "melee" })) == nil,
+      "someone else's blow on one not fighting the player tells them nothing")
+check(next(lose(20, 15)) == nil, "nor does a loss nothing explains")
+npc.activeSpells = { spellOn("2", companion) }
+check(next(lose(40, 30)) == nil, "nor someone else's spell")
+npc.activeSpells = { spellOn("3", stub.player, "paralyze") }
+check(next(lose(40, 30)) == nil, "nor a spell of the player's that takes no health")
+
+-- Fighting the player: whatever hurts it is shown to them, as Dynamic Reticle
+-- did - their summon's blows, their companion's.
+stub.mssTargets = { stub.player }
+npc.activeSpells = nil
+dealt = lose(40, 30, { attacker = companion, successful = true, sourceType = "melee" }).CJ_DamageDealt
+check(dealt and dealt.fraction == 0.25 and dealt.hit and not dealt.own and dealt.source == "melee",
+      "a summon's or a companion's blow on an enemy of the player's is marked for them, as not theirs")
+npc.activeSpells = { spellOn("4", companion) }
+dealt = lose(30, 25).CJ_DamageDealt
+check(dealt and not dealt.hit and not dealt.own and dealt.source == "magic" and dealt.effect == "firedamage",
+      "and so is their spell")
+npc.activeSpells = { spellOn("4", companion), spellOn("5", companion, "shockdamage") }
+dealt = lose(25, 24).CJ_DamageDealt
+check(dealt and dealt.effect == "shockdamage", "with two burning, it names the newest")
+npc.activeSpells = nil
+dealt = lose(25, 20).CJ_DamageDealt
+check(dealt and not dealt.hit, "and a loss nothing explains - lava - on an enemy of theirs")
+stub.realTime = stub.realTime + 2 -- the player's own last blow long past
+local otherKill = lose(20, 0)
+check(otherKill.CJ_DamageDealt and otherKill.CJ_DamageDealt.lethal and otherKill.CJ_ActorKilled == nil,
+      "the one that kills gets the kill marker - and none of the player's own kill effects")
+stub.mssTargets = nil
 
 print("\n== gear knocked loose on death ==")
 local SLOT = stub.packages["openmw.types"].Actor.EQUIPMENT_SLOT

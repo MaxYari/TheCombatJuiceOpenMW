@@ -5,7 +5,7 @@
 A layer of subtle "oomph" lovingly smeared all over TES III combat. Does not alter any gameplay mechanics - purely a visual and auditory satisfactorium. If you are sure that Morrowind's combat mechanics are trash - try this before looking for mods to "overhaul" them.
 
 Rapid-fire list of all the features:
-- A subtle camera shake on hits that scales with how hard your hit landed.
+- A subtle camera shake on your melee hits that scales with how hard your hit landed.
 - Slow-mo and a post-processing effect on kills and/or at the end of a fight.
 - Hit markers and hit sounds, specifically to enhance the feel of ranged/magic hits (previously part of the [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) mod, now they're not).
 - Held weapon, helmet and boots flying off on kill (and optionally all the other equipment/inventory as well, if you like loot piñatas).
@@ -58,7 +58,8 @@ Have fun!
 - With [N'Garde](https://www.nexusmods.com/morrowind/mods/58658) installed, its weapon clashes throw The Combat Juice's sparks too, as long as The Combat Juice loads after it. To keep N'Garde's own, delete `meshes/e/spark.nif` from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).
 - Every hit marker keeps its own size - set it with - and + under its preview in the settings.
-- When an enchanted weapon's cast-on-strike enchantment actually fires, the hit lights up in its colour: fire, frost, shock and poison have their own, anything else uses its school of magic's colour, and magic effects added by other mods bring their own colour.
+- Hit markers show for your own hits, and for anything that hurts an enemy fighting you - your summons', your companions'. Melee, ranged and magic each have their own setting for markers and for sounds: on hit, on death, both, or none.
+- When an enchanted weapon's cast-on-strike enchantment actually fires, the hit lights up in its colour: fire, frost, shock and poison have their own, anything else uses its school of magic's colour, and magic effects added by other mods bring their own colour. Hit markers of spell damage take the same colours, while weapon hits keep the ordinary marker colour. The colours are in Magic Colours, at the bottom of the settings.
 - Blows that take only stamina (punches, mostly) get the hit marker in green and a dimmer, warm orange light. A blow that takes health as well gets the ordinary ones. Stamina-draining spells don't show anything.
 - With [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) installed, its reticle fades out while a kill marker drawn over the crosshair is showing, and fades back in with it. This needs a Dynamic Reticle newer than 1.4.1.
 - Hit markers are simple definition files in the `hitmarkers/` folder. To add your own, copy one of them, point it at your textures, and it will show up in the settings (this works from other mods too).

@@ -21,6 +21,7 @@ M.cameraExtras = { pitch = 0, yaw = 0, roll = 0 }
 M.subscribers = {}
 M.contentFiles = {} -- [name] = false to leave one out
 M.enchantments = {}   -- [id] = { type, effects = { { id, effect = { school, color } } } }
+M.magicEffects = {}   -- [id] = { school, color }
 M.weaponRecords = {}  -- [recordId] = { type, enchant }
 
 -- Storage sections notify their subscribers on a write, the way the engine's do:
@@ -136,6 +137,7 @@ packages["openmw.core"] = {
                         Poison = "poison", FortifyAttribute = "fortifyattribute", DamageHealth = "damagehealth" },
         ENCHANTMENT_TYPE = { CastOnce = 0, CastOnStrike = 1, CastOnUse = 2, ConstantEffect = 3 },
         enchantments = { records = M.enchantments },
+        effects = { records = M.magicEffects },
     },
     sendGlobalEvent = function(name, data)
         table.insert(M.sentGlobalEvents, { name = name, data = data })
@@ -256,6 +258,7 @@ packages["openmw.types"] = {
         end,
         isDead = function(o) return o.dead end,
         isDeathFinished = function(o) return o.dead end,
+        activeSpells = function(o) return (o.object or o).activeSpells or {} end,
 
     },
     NPC = {

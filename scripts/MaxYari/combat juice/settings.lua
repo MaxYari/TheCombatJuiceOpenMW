@@ -51,6 +51,11 @@ local function trigger(key, name, default, description)
     return select(key, name, default, DEFS.TRIGGER_ITEMS, description)
 end
 
+-- When one kind of hit shows its marker, or plays its sound.
+local function markerOn(key, name, default, description)
+    return select(key, name, default, DEFS.MARKER_ON_ITEMS, description)
+end
+
 I.Settings.registerPage {
     key = 'CombatJuicePage',
     l10n = 'CombatJuice',
@@ -193,39 +198,18 @@ local function color(key, name, r, g, b, description)
     return { key = key, renderer = 'color', default = util.color.rgb(r, g, b), name = name, description = description }
 end
 
--- Colours for blows whose cast-on-strike enchantment fired. The elements take
--- their own; everything else its school's. Poison is the median colour of the
--- effect burning on the victim (its hit visual), fire halfway between that
--- visual's red glow and its orange flames, since the glow alone is the plain hit
--- light's red. Frost and shock are picked to read as ice and lightning: the
--- game's own would make shock the paler of the two. The school colours are the
--- game's too:
--- the median colour of the particles on the caster's hand while a spell of that
--- school is cast (each school's magic_cast_*.nif, its textures under the tints
--- its materials give them), brightened until its strongest channel is full, so
--- that the power setting alone decides how bright a light is.
 I.Settings.registerGroup {
     key = DEFS.settings.enchantLights,
     page = 'CombatJuicePage',
     l10n = 'CombatJuice',
     name = 'Enchanted Hit Lights',
-    description = "Enchanted weapons have their own on-hit flashes of light based on ecnhantment spell color or a school of magic. It makes enchanted weapons surprisingly more badass.",
+    description = "Enchanted weapons have their own on-hit flashes of light based on ecnhantment spell color or a school of magic. It makes enchanted weapons surprisingly more badass. The colours can be tweaked in Magic Colours, below.",
     order = 8,
     permanentStorage = true,
     settings = {
         checkbox('EnchantLightEnabled', 'Colour Hit Lights By Enchantment', true,
             "So, should enchanted hits be colored with the enchantment color? If false they use the normal hit color (red by default). Destruction school specific elements (Fire, Lightning, Poison e.t.c) have their own colors."),
         number('EnchantLightPower', 'Enchanted Hit Light Power', 0.6, nil, nil),
-        color('EnchantFireColor', 'Fire', 1.0, 0.28, 0.15, nil),
-        color('EnchantFrostColor', 'Frost', 0.72, 0.85, 1.0),
-        color('EnchantShockColor', 'Shock', 0.35, 0.55, 1.0),
-        color('EnchantPoisonColor', 'Poison', 0.69, 1.0, 0.2),
-        color('EnchantAlterationColor', 'Alteration', 0.97, 0.66, 1),
-        color('EnchantConjurationColor', 'Conjuration', 1, 0.87, 0.59),
-        color('EnchantDestructionColor', 'Destruction', 1, 0.46, 0.1,nil),
-        color('EnchantIllusionColor', 'Illusion', 0.24, 1, 0.19),
-        color('EnchantMysticismColor', 'Mysticism', 0.81, 0.68, 1),
-        color('EnchantRestorationColor', 'Restoration', 0.55, 0.62, 1),
     },
 }
 
@@ -238,7 +222,12 @@ I.Settings.registerGroup {
     description = "A visual marker around the reticle that appears on a succesfull hit. Enhances an impact feel, especially for ranged.",
     permanentStorage = true,
     settings = {
-        checkbox('MarkersEnabled', 'Show Hit Markers', true),
+        markerOn('MeleeMarkers', 'Melee Hit Markers', DEFS.MARKER_ON.Both,
+            "Weapon swings and punches. Shown for your own hits, and for anything that hurts an enemy fighting you - your summons', your companions'. With deaths off, a killing blow shows as a hit."),
+        markerOn('RangedMarkers', 'Ranged Hit Markers', DEFS.MARKER_ON.Both,
+            "Arrows, bolts and thrown weapons."),
+        markerOn('MagicMarkers', 'Magic Hit Markers', DEFS.MARKER_ON.Both,
+            "Spells, and anything else that takes health with no weapon behind it - what a spell leaves burning, lava."),
         markerSelect('HitMarker', 'Hit Marker', 'faded_triangles', 'MarkerColor',
             "Every definition in hitmarkers/ is listed here, from this mod or any other."),
         markerSelect('KillMarker', 'Kill Marker', 'cross', 'KillMarkerColor'),
@@ -258,6 +247,8 @@ I.Settings.registerGroup {
             default = util.color.rgb(0.929, 0.8, 0.624),
             name = 'Hit Marker Colour'            
         },
+        checkbox('SpellMarkerColors', 'Colour Spell Hit Markers', true,
+            "Hit markers of spell damage take the colour of its magic; weapon hits, enchanted or not, keep the hit marker colour. The colours can be tweaked in Magic Colours, below."),
         {
             key = 'KillMarkerColor',
             renderer = 'color',
@@ -265,7 +256,7 @@ I.Settings.registerGroup {
             name = 'Kill Marker Colour',
         },
         checkbox('StaminaMarkers', 'Show Markers On Stamina Hits', true,
-            "For hits that damage stamina"),
+            "For hits that damage stamina, when melee hit markers are on"),
         {
             key = 'StaminaMarkerColor',
             renderer = 'color',
@@ -293,18 +284,51 @@ I.Settings.registerGroup {
     l10n = 'CombatJuice',
     name = 'Hit Marker Sounds',
     order = 2,
-    description = "Sounds that acoompany hit markers, again enhances impact feel, especially for ranged. I personally a bit on a fence about using it for spellcasing, but left it ON for spells by default.",
+    description = "Sounds that acoompany hit markers, again enhances impact feel, especially for ranged. I personally a bit on a fence about using it for spellcasing, but left it ON for spell kills by default.",
     permanentStorage = true,
     settings = {
+        markerOn('MeleeSounds', 'Melee Hit Sounds', DEFS.MARKER_ON.None),
+        markerOn('RangedSounds', 'Ranged Hit Sounds', DEFS.MARKER_ON.Both),
+        markerOn('MagicSounds', 'Magic Hit Sounds', DEFS.MARKER_ON.Death),
         soundSelect('HitMarkerSound', 'Hit Sound', 'bass_stab', "Press play to hear it."),
         number('HitMarkerVolume', 'Hit Volume', 2.0, 0, nil),
         soundSelect('DeathMarkerSound', 'Kill Sound', 'bass_stab'),
         number('DeathMarkerVolume', 'Kill Volume', 2.0, 0, nil),
         number('MarkerSoundPitchMin', 'Pitch Minimum', 0.8, 0.1, nil),
         number('MarkerSoundPitchMax', 'Pitch Maximum', 1.2, 0.1, nil),
-        checkbox('MeleeSound', 'Play With Melee', false),
-        checkbox('MarksmanSound', 'Play With Marksman', true),
-        checkbox('SpellcasterSound', 'Play With Spells', true),
+    },
+}
+
+-- The colours of magic, for enchanted hit lights and the hit markers of spell
+-- damage. The elements take their own; everything else its school's. Poison is
+-- the median colour of the effect burning on the victim (its hit visual), fire
+-- halfway between that visual's red glow and its orange flames, since the glow
+-- alone is the plain hit light's red. Frost and shock are picked to read as ice
+-- and lightning: the game's own would make shock the paler of the two. The
+-- school colours are the game's too:
+-- the median colour of the particles on the caster's hand while a spell of that
+-- school is cast (each school's magic_cast_*.nif, its textures under the tints
+-- its materials give them), brightened until its strongest channel is full, so
+-- that the power setting alone decides how bright a light is.
+I.Settings.registerGroup {
+    key = DEFS.settings.magicColors,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = 'Magic Colours',
+    description = "The colours of magic, for enchanted hit lights and for hit markers of spell damage. Fire, frost, shock and poison have their own, anything else takes its school's. Magic effects added by other mods bring their own colour.",
+    order = 9,
+    permanentStorage = true,
+    settings = {
+        color('FireColor', 'Fire', 1.0, 0.28, 0.15, nil),
+        color('FrostColor', 'Frost', 0.72, 0.85, 1.0),
+        color('ShockColor', 'Shock', 0.35, 0.55, 1.0),
+        color('PoisonColor', 'Poison', 0.69, 1.0, 0.2),
+        color('AlterationColor', 'Alteration', 0.97, 0.66, 1),
+        color('ConjurationColor', 'Conjuration', 1, 0.87, 0.59),
+        color('DestructionColor', 'Destruction', 1, 0.46, 0.1,nil),
+        color('IllusionColor', 'Illusion', 0.24, 1, 0.19),
+        color('MysticismColor', 'Mysticism', 0.81, 0.68, 1),
+        color('RestorationColor', 'Restoration', 0.55, 0.62, 1),
     },
 }
 

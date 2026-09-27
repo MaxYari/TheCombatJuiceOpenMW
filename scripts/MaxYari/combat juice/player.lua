@@ -22,6 +22,7 @@ local shaderUtils = require(mp .. "shader_utils")
 local hitmarkers = require(mp .. "hitmarkers")
 local soundFiles = require(mp .. "sounds")
 local enchantLight = require(mp .. "enchant_light")
+local magicColors = require(mp .. "magic_colors")
 require(mp .. "settings")
 
 -- Max Yari's Script Services (MSS) is a required dependency: checked once, when this script loads.
@@ -37,6 +38,7 @@ local cameraSettings = SettingsHelper:new(DEFS.settings.camera)
 local flashSettings = SettingsHelper:new(DEFS.settings.flash)
 local effectSettings = SettingsHelper:new(DEFS.settings.effects)
 local enchantSettings = SettingsHelper:new(DEFS.settings.enchantLights)
+local magicColorSettings = SettingsHelper:new(DEFS.settings.magicColors)
 
 local selfObject = omwself.object
 
@@ -415,7 +417,7 @@ local function weaponInHand()
     return ok and item or nil
 end
 
-local function enchantColor(key) return enchantSettings[key] end
+local function magicColor(key) return magicColorSettings[key] end
 
 -- Where a blow landed --------------------------------------------------------
 --
@@ -522,20 +524,19 @@ end
 
 -- Hit markers ---------------------------------------------------------------
 
--- Which of the three "play with..." switches covers what is in our hands.
-local function soundAllowed()
-    local ok, stance = pcall(types.Actor.getStance, selfObject)
-    if not ok then return false end
-    if stance == types.Actor.STANCE.Spell then return markerSoundSettings.SpellcasterSound end
-    if stance ~= types.Actor.STANCE.Weapon then return false end
+-- Which of the settings a hit falls under, by what dealt it: a melee or a
+-- ranged blow, or magic - a spell, or anything else with no blow behind it.
+local MARKER_SETTING = { melee = "MeleeMarkers", ranged = "RangedMarkers", magic = "MagicMarkers" }
+local SOUND_SETTING = { melee = "MeleeSounds", ranged = "RangedSounds", magic = "MagicSounds" }
 
-    local weapon = types.Actor.getEquipment(selfObject, types.Actor.EQUIPMENT_SLOT.CarriedRight)
-    local record = weapon and types.Weapon.objectIsInstance(weapon) and types.Weapon.record(weapon)
-    local ranged = record and (record.type == types.Weapon.TYPE.MarksmanBow
-        or record.type == types.Weapon.TYPE.MarksmanCrossbow
-        or record.type == types.Weapon.TYPE.MarksmanThrown)
-    if ranged then return markerSoundSettings.MarksmanSound end
-    return markerSoundSettings.MeleeSound
+-- What a DEFS.MARKER_ON setting makes of a hit: "kill", "hit", or nil for
+-- nothing. A kill where kills are off but hits are on shows as a hit.
+local function shownAs(value, lethal)
+    local hits = value == DEFS.MARKER_ON.Both or value == DEFS.MARKER_ON.Hit
+    local kills = value == DEFS.MARKER_ON.Both or value == DEFS.MARKER_ON.Death
+    if lethal and kills then return "kill" end
+    if hits then return "hit" end
+    return nil
 end
 
 -- Dynamic Reticle -----------------------------------------------------------
@@ -554,51 +555,78 @@ local function updateReticle()
     if pcall(reticle.setAlphaMultiplier, DEFS.modId, alpha) then reticleAlpha = alpha end
 end
 
+-- Markers and their sounds come at most this often, whichever enemy they are
+-- for - Dynamic Reticle's throttle. A kill always shows, and so does a blow
+-- that came through I.Combat, starting the marker over - unless one showed
+-- within SAME_MOMENT: a weapon's enchantment and the blow that carried it come
+-- off a frame apart, and would otherwise be heard twice.
+local MARKER_THROTTLE = 0.333
+local SAME_MOMENT = 0.1
+local lastMarkerAt = -1000
+
+-- source: "melee", "ranged" or "magic", see MARKER_SETTING.
 -- stamina: the blow took stamina and no health - the hit marker, in its own
 -- colour. Anything that took health is an ordinary hit and wins.
-local function playMarker(lethal, weak, stamina)
-    if not markerSettings.MarkersEnabled then return end
-    if stamina and not markerSettings.StaminaMarkers then return end
+-- blow: it came through I.Combat, and overrides the throttle.
+-- tint: the colour of the magic that dealt it, for the hit marker.
+local function playMarker(source, lethal, weak, stamina, blow, tint)
+    if not lethal and now() - lastMarkerAt < (blow and SAME_MOMENT or MARKER_THROTTLE) then return end
+    source = MARKER_SETTING[source] and source or "melee"
 
+    local marker = shownAs(markerSettings[MARKER_SETTING[source]], lethal)
+    if stamina and not markerSettings.StaminaMarkers then marker = nil end
     local opacity = markerSettings.MarkerOpacity or 1
     if weak and not lethal then opacity = markerSettings.WeakMarkerOpacity or 0 end
-    if opacity <= 0 then return end
-
-    local id = lethal and markerSettings.KillMarker or markerSettings.HitMarker
-    local sizes = markerSettings.MarkerSizes
-    hitmarkers.play(id, {
-        -- Each marker's own size, set under its preview in the settings.
-        scale = sizes and sizes[id] or 1,
-        alpha = opacity,
-        color = lethal and markerSettings.KillMarkerColor
-            or stamina and markerSettings.StaminaMarkerColor
-            or markerSettings.MarkerColor,
-        overReticle = lethal,
-    })
-    -- Now rather than on the next update, so the two never show together.
-    updateReticle()
-
+    if opacity <= 0 then marker = nil end
     -- A glancing blow is shown but not heard.
-    if (weak and not lethal) or not soundAllowed() then return end
+    local sound = not (weak and not lethal) and shownAs(markerSoundSettings[SOUND_SETTING[source]], lethal)
+    if not marker and not sound then return end
+    lastMarkerAt = now()
 
+    if marker then
+        local kill = marker == "kill"
+        local id = kill and markerSettings.KillMarker or markerSettings.HitMarker
+        local sizes = markerSettings.MarkerSizes
+        hitmarkers.play(id, {
+            -- Each marker's own size, set under its preview in the settings.
+            scale = sizes and sizes[id] or 1,
+            alpha = opacity,
+            color = kill and markerSettings.KillMarkerColor
+                or stamina and markerSettings.StaminaMarkerColor
+                or tint
+                or markerSettings.MarkerColor,
+            overReticle = kill,
+        })
+        -- Now rather than on the next update, so the two never show together.
+        updateReticle()
+    end
+    if not sound then return end
+
+    local kill = sound == "kill"
     local minPitch = markerSoundSettings.MarkerSoundPitchMin or 1
     local maxPitch = markerSoundSettings.MarkerSoundPitchMax or 1
-    local name = lethal and markerSoundSettings.DeathMarkerSound or markerSoundSettings.HitMarkerSound
+    local name = kill and markerSoundSettings.DeathMarkerSound or markerSoundSettings.HitMarkerSound
     local path = soundFiles.path(name)
     if not path then return end
     core.sound.playSoundFile3d(path, omwself, {
-        volume = (lethal and markerSoundSettings.DeathMarkerVolume
+        volume = (kill and markerSoundSettings.DeathMarkerVolume
             or markerSoundSettings.HitMarkerVolume) or 1,
         pitch = minPitch + math.random() * math.max(maxPitch - minPitch, 0),
         loop = false,
     })
 end
 
--- Sent by the actor we hit once the health has actually come off it.
+-- Sent by the actor we hit once the health has actually come off it, and by
+-- one fighting us whatever hurt it. Only our own melee blows move the camera:
+-- a shot, a spell, a summon's blow or a burn is only marked.
 local function onDamageDealt(data)
-    local scale = damageShakeScale(data.fraction)
-    startShake(scale, scale)
-    playMarker(data.lethal, data.weak)
+    if data.own and data.source == "melee" then
+        local scale = damageShakeScale(data.fraction)
+        startShake(scale, scale)
+    end
+    local tint = markerSettings.SpellMarkerColors and data.effect
+        and magicColors.effectColor(data.effect, magicColor) or nil
+    playMarker(data.source, data.lethal, data.weak, false, data.hit, tint)
 end
 
 -- Sent by the actor we hit, from its own I.Combat hit handler. The shake and
@@ -607,11 +635,11 @@ end
 -- event, so a stamina-only one is marked here as well.
 local function onAttackLanded(data)
     if not data.successful then return end
-    if data.staminaOnly then playMarker(false, false, true) end
+    if data.staminaOnly then playMarker(data.ranged and "ranged" or "melee", false, false, true, true) end
     -- An enchantment that fired lights in its own colour, sparks or not: the
     -- discharge is a thing of its own.
     local enchanted = enchantSettings.EnchantLightEnabled
-        and enchantLight.hitColor(data, weaponInHand(), now(), enchantColor)
+        and enchantLight.hitColor(data, weaponInHand(), now(), magicColor)
     -- A blow that did nothing lights nothing - but an enchantment that fired
     -- did something, shield or no shield, and still lights in its colour.
     if not enchanted and data.noEffect and not effectSettings.LightNoEffectHits then return end

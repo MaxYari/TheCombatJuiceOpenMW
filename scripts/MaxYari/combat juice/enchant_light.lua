@@ -1,11 +1,9 @@
 -- Hit lights in the colour of the enchantment a blow carried, when it fired.
 --
 -- The colour comes from the enchantment's effects, in the order it lists them:
--- the first that is one of the main combat elements (fire, frost, shock,
--- poison) takes that element's colour from the settings; the first that a mod
--- made itself - any effect id the game does not have - brings the colour on its
--- own record, which is how a mod's custom venom glows violet without telling
--- this one anything. Failing both, the first effect's school decides.
+-- the first that is one of the main combat elements takes that element's
+-- colour; the first that a mod made itself brings the colour on its own record.
+-- Failing both, the first effect's school decides. See magic_colors.lua.
 --
 -- Whether it fired: the engine casts an on-strike enchantment, and spends its
 -- charge, before any Lua hit handler hears of the blow, so an enchantment on
@@ -17,29 +15,10 @@
 local core = require("openmw.core")
 local types = require("openmw.types")
 
+local mp = "scripts/MaxYari/combat juice/"
+local magicColors = require(mp .. "magic_colors")
+
 local M = {}
-
--- Effect id -> the setting that colours it.
-M.ELEMENTS = {
-    firedamage = "EnchantFireColor",
-    frostdamage = "EnchantFrostColor",
-    shockdamage = "EnchantShockColor",
-    poison = "EnchantPoisonColor",
-}
-
--- School (a skill id) -> the setting that colours it.
-M.SCHOOLS = {
-    alteration = "EnchantAlterationColor",
-    conjuration = "EnchantConjurationColor",
-    destruction = "EnchantDestructionColor",
-    illusion = "EnchantIllusionColor",
-    mysticism = "EnchantMysticismColor",
-    restoration = "EnchantRestorationColor",
-}
-
--- The game's own effects. Anything else was made by a mod.
-local vanilla = {}
-for _, id in pairs(core.magic.EFFECT_TYPE) do vanilla[tostring(id):lower()] = true end
 
 local function weaponRecord(recordId)
     if not recordId then return nil end
@@ -56,10 +35,10 @@ function M.color(enchantId, setting)
     local schoolKey
     for _, params in ipairs(record.effects) do
         local id = tostring(params.id):lower()
-        if M.ELEMENTS[id] then return setting(M.ELEMENTS[id]) end
+        if magicColors.ELEMENTS[id] then return setting(magicColors.ELEMENTS[id]) end
         local effect = params.effect
-        if effect and not vanilla[id] and effect.color then return effect.color end
-        schoolKey = schoolKey or (effect and M.SCHOOLS[tostring(effect.school):lower()])
+        if effect and not magicColors.isVanilla(id) and effect.color then return effect.color end
+        schoolKey = schoolKey or (effect and magicColors.SCHOOLS[tostring(effect.school):lower()])
     end
     return schoolKey and setting(schoolKey) or nil
 end

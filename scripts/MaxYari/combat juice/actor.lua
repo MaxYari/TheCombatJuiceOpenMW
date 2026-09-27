@@ -21,13 +21,14 @@ if recordBlackList[omwself.recordId] then return end
 
 local lastHitByPlayer = 0
 
-local function playerIsFighting()
+-- The player this actor is fighting, if it is fighting one.
+local function fightingPlayer()
     local targets = I.MSS and I.MSS.getCombatTargets()
-    if not targets then return false end
+    if not targets then return nil end
     for _, t in ipairs(targets) do
-        if types.Player.objectIsInstance(t) then return true end
+        if types.Player.objectIsInstance(t) then return t end
     end
-    return false
+    return nil
 end
 
 -- The weapon's record, if it is still there to ask. A thrown weapon's is a
@@ -78,31 +79,107 @@ I.Combat.addOnHitHandler(function(attack)
     end
 end)
 
+-- Spells ----------------------------------------------------------------------
+--
+-- A spell never goes through I.Combat, so the health it takes comes with no
+-- hit. The spell itself is still among this actor's active spells when the
+-- health comes off, caster and all, since the engine only erases a spent effect
+-- at the start of its next update. Spell Framework Plus and OSSC name the
+-- caster when they apply theirs too.
+
+-- The effects that take health.
+local HEALTH_EFFECTS = {
+    firedamage = true, frostdamage = true, shockdamage = true, damagehealth = true,
+    poison = true, absorbhealth = true, drainhealth = true, sundamage = true,
+}
+
+-- A spell's effect that takes health, or nil.
+local function healthEffect(spell)
+    for _, effect in ipairs(spell.effects) do
+        local id = tostring(effect.id):lower()
+        if HEALTH_EFFECTS[id] then return id end
+    end
+    return nil
+end
+
+-- What magic is taking health off this actor: the effect of the newest spell
+-- on it that takes health, whoever cast it, and the player, if one of those
+-- spells is theirs.
+local function healthSpells()
+    local effect, playerCaster = nil, nil
+    for _, spell in pairs(types.Actor.activeSpells(omwself)) do
+        local id = healthEffect(spell)
+        if id then
+            effect = id
+            local caster = spell.caster
+            if caster and types.Player.objectIsInstance(caster) then playerCaster = caster end
+        end
+    end
+    return effect, playerCaster
+end
+
+-- Health decreases ------------------------------------------------------------
+
+-- Which of the player's marker settings a loss falls under: a blow's own kind,
+-- and anything with no blow behind it - a spell, what it leaves burning, lava -
+-- magic.
+local function sourceOf(hit)
+    if not hit then return "magic" end
+    local kind = tostring(hit.sourceType):lower()
+    if kind == "ranged" or kind == "magic" then return kind end
+    return "melee"
+end
+
 -- Health decreases come from MSS, which reads health once per frame for every
 -- listener instead of once per mod, and hands over the hit that caused them.
 local function onHealthDecrease(e)
     local damage = math.min(e.previousHealth, e.baseHealth) - e.health
     if damage <= 0 then return end
 
+    -- The player's own doing: their blow, or their spell if nothing struck.
     local attacker = e.hit and e.hit.attacker
-    local byPlayer = attacker ~= nil and types.Player.objectIsInstance(attacker)
+    local effect = nil
+    if not e.hit then
+        local ok, spellEffect, caster = pcall(healthSpells)
+        if ok then attacker, effect = caster, spellEffect end
+    end
+    local own = attacker ~= nil and types.Player.objectIsInstance(attacker)
+    -- And whatever hurts an actor that is fighting them - their summon, their
+    -- companion - is shown to them as well.
+    local shownTo = own and attacker or fightingPlayer()
+
+    -- Something burning on, or lava, takes health every frame; the player's
+    -- script keeps the markers from coming too often.
+    local lethal = e.health <= 0
+    local now = core.getRealTime()
 
     -- How hard the blow was, as a share of this actor's whole health. Taken
     -- from the health that was actually lost rather than from the attack's own
     -- damage figure, which is read before armour and difficulty are applied to
     -- it: our hit handler runs ahead of the one that does that.
-    if byPlayer and e.baseHealth and e.baseHealth > 0 then
-        -- Glancing hits come from a separate mod, if it is installed.
+    if shownTo and e.baseHealth and e.baseHealth > 0 then
+        -- Glancing hits come from a separate mod, if it is installed. It only
+        -- knows the player's weapons.
         local weak = false
-        if I.GlancedHits and I.GlancedHits.lastHitInfo
-            and core.getRealTime() - I.GlancedHits.lastHitInfo.time <= 0.1 then
+        if own and e.hit and I.GlancedHits and I.GlancedHits.lastHitInfo
+            and now - I.GlancedHits.lastHitInfo.time <= 0.1 then
             weak = I.GlancedHits.lastHitInfo.glancedHit and true or false
         end
-        attacker:sendEvent(DEFS.e.DamageDealt, {
+        shownTo:sendEvent(DEFS.e.DamageDealt, {
             victim = selfObject,
             fraction = damage / e.baseHealth,
-            lethal = e.health <= 0,
+            lethal = lethal,
             weak = weak,
+            source = sourceOf(e.hit),
+            -- The player's own, rather than their summon's or companion's.
+            own = own or nil,
+            -- A blow that came through I.Combat, whoever's: its marker shows at
+            -- once, whatever the throttle.
+            hit = e.hit ~= nil or nil,
+            -- The magic effect taking the health when no blow did, for the
+            -- colour of its marker. A blow's marker never takes one, even an
+            -- enchanted weapon's.
+            effect = effect,
         })
     end
 
@@ -114,8 +191,8 @@ local function onHealthDecrease(e)
 
     -- Only tell the player about kills that are theirs: either the killing blow
     -- was theirs, or this actor was fighting them and something of theirs (a
-    -- spell, a summon) finished the job a moment later.
-    if not byPlayer and not (core.getRealTime() - lastHitByPlayer < 1.0 and playerIsFighting()) then
+    -- summon, a companion) finished the job a moment later.
+    if not own and not (now - lastHitByPlayer < 1.0 and fightingPlayer()) then
         return
     end
 

@@ -37,6 +37,17 @@ return {
 
     FLASH_ON_ITEMS = { "Never", "Short slow motion", "Long slow motion", "Both slow motions" },
 
+    -- When a kind of hit - melee, ranged, magic - shows its marker, or plays
+    -- its sound.
+    MARKER_ON = {
+        Both = "On hit and on death",
+        Hit = "Only on hit",
+        Death = "Only on death",
+        None = "None",
+    },
+
+    MARKER_ON_ITEMS = { "On hit and on death", "Only on hit", "Only on death", "None" },
+
     -- Events. Actor -> player, player -> global.
     e = {
         AttackLanded = prefix .. "AttackLanded", -- victim actor -> attacking player
@@ -55,6 +66,7 @@ return {
         flash = "SettingsCombatJuiceFlash",
         effects = "SettingsCombatJuiceEffects",
         enchantLights = "SettingsCombatJuiceEnchantLights",
+        magicColors = "SettingsCombatJuiceMagicColors",
         markers = "SettingsCombatJuiceMarkers",
         markerSounds = "SettingsCombatJuiceMarkerSounds",
         looseGear = "SettingsCombatJuiceLooseGear", -- global storage, see settings_global.lua
