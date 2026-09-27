@@ -614,8 +614,8 @@ check(soundsFor({ source = "ranged", lethal = true }) == 1 and stub.sentSounds[1
 check(soundsFor({ source = "ranged", weak = true }) == 0, "a glancing hit is silent")
 check(soundsFor({ source = "melee" }) == 0 and soundsFor({ source = "melee", lethal = true }) == 0,
       "melee is silent by default")
-check(soundsFor({ source = "magic" }) == 0 and soundsFor({ source = "magic", lethal = true }) == 1,
-      "and magic only sounds on a kill")
+check(soundsFor({ source = "magic" }) == 0 and soundsFor({ source = "magic", lethal = true }) == 0,
+      "and so is magic, kills included")
 setting("MarkerSounds", "MeleeSounds", "Only on hit")
 check(soundsFor({ source = "melee" }) == 1, "once switched on, melee plays it")
 
