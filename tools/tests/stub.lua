@@ -120,13 +120,16 @@ M.player = player
 M.vec3 = vec3
 M.vec2 = vec2
 
+M.gmsts = {}
+
 local packages = {}
 M.packages = packages
 
 packages["openmw.core"] = {
     getRealTime = function() return M.realTime end,
     getSimulationTime = function() return M.realTime end,
-    getGMST = function() return 1 end,
+    -- Game settings a test names in M.gmsts, and 1 for any other.
+    getGMST = function(name) return M.gmsts[name] or 1 end,
     contentFiles = { has = function(name) return M.contentFiles[name] ~= false end },
     magic = {
         EFFECT_TYPE = { FireDamage = "firedamage", FrostDamage = "frostdamage", ShockDamage = "shockdamage",
@@ -337,7 +340,11 @@ local function parseYaml(path)
         if not line:match("^%s*#") and line:match("%S") then
             local indent = #(line:match("^%s*"))
             local dash, rest = line:match("^%s*(%-)%s*(.*)$")
-            if dash then
+            if dash and not rest:match("^[%w_]+%s*:") then
+                -- a plain value in a list, rather than a table
+                table.insert(list, scalar(rest))
+                line = ""
+            elseif dash then
                 item = {}
                 table.insert(list, item)
                 line = rest

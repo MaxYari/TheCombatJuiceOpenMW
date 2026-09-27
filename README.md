@@ -53,7 +53,7 @@ Have fun!
 
 ## ⚔︎ Good to know
 
-- Gear flying off on kill moves it out of the corpse and onto the floor, so you pick it up from the ground instead of looting the body. Each item (weapon, helmet, boots, other worn pieces, inventory) has its own chance in the settings - set a chance to 0 to leave that item on the corpse.
+- Gear flying off on kill moves it out of the corpse and onto the floor, so you pick it up from the ground instead of looting the body. Each item (weapon, helmet, boots, other worn pieces, inventory) has its own chance in the settings - set a chance to 0 to leave that item on the corpse. Bound (summoned) gear always stays on the corpse; to keep other items on it too, list their record ids in a `.yaml` file in the `loose_gear/` folder, the way `bound_items.yaml` does.
 - To get Impact Effects' original sparks back, delete the `meshes/e/impact` folder from this mod.
 - With [N'Garde](https://www.nexusmods.com/morrowind/mods/58658) installed, its weapon clashes throw The Combat Juice's sparks too, as long as The Combat Juice loads after it. To keep N'Garde's own, delete `meshes/e/spark.nif` from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).

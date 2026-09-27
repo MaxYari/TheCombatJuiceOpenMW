@@ -707,6 +707,9 @@ print("\n== loading actor.lua ==")
 local npc = stub.newObject("npc", { id = "bandit_z" })
 stub.install(npc)
 stub.hitHandlers, stub.damageListeners = {}, {}
+-- A mod pointing a bound spell at an item of its own, before the first death
+-- reads what never comes loose.
+stub.gmsts.sMagicBoundCuirassID = "Mod_Bound_Cuirass"
 local actor = loadScript("actor.lua")
 check(#stub.hitHandlers == 1, "actor registered an onHit handler")
 actor.engineHandlers.onActive()
@@ -842,6 +845,37 @@ for _, ev in ipairs(stub.sentObjectEvents) do
 end
 check(impulses == #gear.items, "the global script puts every item in the world and throws it")
 check(upward and awayward > 0, "up and away from the killer, rather than dropped")
+
+-- Bound gear stays on: thrown into the world, the spell that summoned it could
+-- never take it back.
+gearSetting("WeaponLooseChance", 1)
+gearSetting("HelmetLooseChance", 1)
+gearSetting("BootsLooseChance", 1)
+gearSetting("WornLooseChance", 1)
+local boundSword = stub.newObject("weapon", { recordId = "bound_longsword" })
+local tdGreaves = stub.newObject("armor", { recordId = "t_com_bound_greaves_01" })
+local katar = stub.newObject("weapon", { recordId = "h2h_bound_katar" })
+local modCuirass = stub.newObject("armor", { recordId = "mod_bound_cuirass" })
+local plainHelm = stub.newObject("armor")
+npc.equipment = { [SLOT.CarriedRight] = boundSword, [SLOT.CarriedLeft] = katar, [SLOT.Greaves] = tdGreaves,
+    [SLOT.Cuirass] = modCuirass, [SLOT.Helmet] = plainHelm }
+flew = thrownItems(die())
+check(flew[plainHelm] and not flew[boundSword] and not flew[katar] and not flew[tdGreaves],
+      "bound gear on the list stays on at chance 1, in hand or worn, whatever case its id is listed in")
+check(npc.equipment[SLOT.CarriedRight] == boundSword and npc.equipment[SLOT.Greaves] == tdGreaves,
+      "and stays equipped")
+check(not flew[modCuirass] and npc.equipment[SLOT.Cuirass] == modCuirass,
+      "and so does whatever the game's bound spells are set to summon, listed or not")
+
+gearSetting("SpillInventory", true)
+local boundDagger = stub.newObject("weapon", { recordId = "bound_dagger" })
+local coin = stub.newObject("misc")
+npc.equipment = {}
+npc.carried = { boundDagger, coin }
+flew = thrownItems(die())
+check(flew[coin] and not flew[boundDagger], "carried bound gear stays in the corpse when the rest spills")
+gearSetting("SpillInventory", false)
+npc.carried = nil
 
 print("\n== a shader that will not load ==")
 stub.install(stub.player)

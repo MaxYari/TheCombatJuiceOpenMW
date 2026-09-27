@@ -16,9 +16,11 @@
 local mp = "scripts/MaxYari/combat juice/"
 
 local core = require("openmw.core")
+local markup = require("openmw.markup")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
 local util = require("openmw.util")
+local vfs = require("openmw.vfs")
 
 local DEFS = require(mp .. "defs")
 
@@ -116,6 +118,53 @@ local function roll(chance)
     return math.random() < (chance or 0)
 end
 
+-- Items that never come loose -------------------------------------------------
+--
+-- Worn or carried, these stay on the corpse whatever the chances say. Mainly
+-- bound gear: thrown into the world, the spell that summoned it can no longer
+-- take it back when it runs out, and it stays there forever. They are the
+-- record ids listed under never_loose in any .yaml file in loose_gear/, from
+-- this mod or any other, and whatever the game's own bound spells summon.
+
+M.NEVER_LOOSE_PREFIX = "loose_gear/"
+
+-- The game settings naming what each bound spell summons. A mod can point them
+-- at items of its own.
+local BOUND_ITEM_GMSTS = {
+    "sMagicBoundDaggerID", "sMagicBoundLongswordID", "sMagicBoundMaceID",
+    "sMagicBoundBattleAxeID", "sMagicBoundSpearID", "sMagicBoundLongbowID",
+    "sMagicBoundCuirassID", "sMagicBoundHelmID", "sMagicBoundBootsID",
+    "sMagicBoundShieldID", "sMagicBoundLeftGauntletID", "sMagicBoundRightGauntletID",
+}
+
+local neverLoose = nil -- [lowercase record id] = true, read on the first death
+
+local function loadNeverLoose()
+    local ids = {}
+    for path in vfs.pathsWithPrefix(M.NEVER_LOOSE_PREFIX) do
+        if path:lower():match("%.yaml$") then
+            local ok, data = pcall(markup.loadYaml, path)
+            local list = ok and type(data) == "table" and data.never_loose
+            if type(list) == "table" then
+                for _, id in ipairs(list) do ids[tostring(id):lower()] = true end
+            else
+                print("[CombatJuice]: " .. path .. " has no never_loose list, skipping it")
+            end
+        end
+    end
+    for _, gmst in ipairs(BOUND_ITEM_GMSTS) do
+        local ok, id = pcall(core.getGMST, gmst)
+        if ok and type(id) == "string" and id ~= "" then ids[id:lower()] = true end
+    end
+    return ids
+end
+
+local function staysOn(item)
+    neverLoose = neverLoose or loadNeverLoose()
+    local ok, id = pcall(function() return item.recordId end)
+    return ok and type(id) == "string" and neverLoose[id:lower()] == true
+end
+
 -- Straight away from whoever landed the blow, flat. nil throws them forwards.
 local function awayFrom(actor, attacker)
     if attacker == nil then return nil end
@@ -139,7 +188,7 @@ function M.strip(actor, attacker)
 
     local function take(slot)
         local item = keep[slot]
-        if item == nil then return end
+        if item == nil or staysOn(item) then return end
         keep[slot] = nil
         local launch = LAUNCH[slot] or DEFAULT_LAUNCH
         thrown[#thrown + 1] = { item = item, side = launch.side, height = launch.height }
@@ -176,7 +225,7 @@ function M.strip(actor, attacker)
         if okInv and carried ~= nil then
             for i = 1, #carried do
                 local item = carried[i]
-                if not worn[item.id] then
+                if not worn[item.id] and not staysOn(item) then
                     thrown[#thrown + 1] = { item = item, side = 0, height = DEFAULT_LAUNCH.height }
                 end
             end
