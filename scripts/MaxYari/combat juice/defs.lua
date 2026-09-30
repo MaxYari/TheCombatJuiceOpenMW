@@ -48,7 +48,7 @@ return {
 
     MARKER_ON_ITEMS = { "On hit and on death", "Only on hit", "Only on death", "None" },
 
-    -- Events. Actor -> player, player -> global.
+    -- Events. Actor -> player, player -> global, global -> player.
     e = {
         AttackLanded = prefix .. "AttackLanded", -- victim actor -> attacking player
         DamageDealt = prefix .. "DamageDealt",   -- victim actor -> attacking player, with how hard
@@ -56,6 +56,7 @@ return {
         Slowdown = prefix .. "Slowdown",         -- player -> global, asks for a time scale dip
         SpawnLight = prefix .. "SpawnLight",     -- player -> global, asks for a light flash
         ThrowGear = prefix .. "ThrowGear",       -- dying actor -> global, what came loose off it
+        ShowMessage = prefix .. "ShowMessage",   -- global -> player, a message for the player to read
     },
 
     -- Settings groups, also the names of their storage sections.

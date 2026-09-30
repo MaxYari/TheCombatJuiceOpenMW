@@ -30,7 +30,7 @@ The Combat Juice was developed to create a lovely, immersive **_symphony of dest
 - **[They Bleed](https://www.nexusmods.com/morrowind/mods/60272)** - blood on the environment.
 - **[OpenMW Immersive Sounds - 1st Person Body](https://www.nexusmods.com/morrowind/mods/60196)** - sounds of breathing and strain during combat and on low stamina, as well as shader and camera sway effects, all of which (you have to trust me) actually don't feel garish or out of place. Very tastefully made.
 
-**[LuaPhysics](https://www.nexusmods.com/morrowind/mods/56589)** - all the features of this mod related to weapons/equipment flying off on kill require this mod.
+**[LuaPhysics](https://www.nexusmods.com/morrowind/mods/56589)** - all the features of this mod related to weapons/equipment flying off on kill require this mod, version 1.4 or newer.
 
 **Honorable mentions** (i.e. more a matter of taste, not _strongly_ recommended):
 
@@ -45,7 +45,7 @@ Yet The Combat Juice will work on its own - everything above is merely a matter 
 - Install this mod **with a mod organiser**: download the archive (or this repository as an archive) and drag and drop it into your mod organiser of choice (e.g [Mod Organizer 2](https://github.com/ModOrganizer2/modorganizer/releases) on Windows or [Nerevarine Organizer](https://github.com/grazelandsnomad/nerevarine_organizer/releases/tag/v0.70) on Linux). **Or** [read this tutorial](https://modding-openmw.com/tips/installing-mods/) on how to install mods using the launcher or completely manually (it's also very easy).
 - Enable `CombatJuice.omwscripts` in the "Content Files" tab of the OpenMW launcher.
 - Ensure that post processing is enabled: Options -> Video -> Post Processing (in-game) or "Enable post processing" in the "Visuals" tab of the launcher settings. The kill flash doesn't show without it.
-- _Optional_: for weapons and gear flying off on kill, install [LuaPhysics](https://www.nexusmods.com/morrowind/mods/56589) and enable `LuaPhysicsEngine.omwscripts`. Without it, everything simply stays on the corpse.
+- _Optional_: for weapons and gear flying off on kill, install [LuaPhysics](https://www.nexusmods.com/morrowind/mods/56589) 1.4 or newer and enable `LuaPhysicsEngine.omwscripts`. Without it, everything simply stays on the corpse.
 - _Optional_: for the sparks, install [OpenMW Impact Effects](https://www.nexusmods.com/morrowind/mods/55508) and put The Combat Juice **after** it in the load order - the new sparks replace its spark meshes.
 - Settings are in Options -> Scripts -> Combat Juice.
 

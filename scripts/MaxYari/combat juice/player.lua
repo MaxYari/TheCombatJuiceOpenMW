@@ -2,7 +2,7 @@
 -- camera shake and impact lights.
 -- Mod version, published to Nexus by .github/workflows/nexus-release.yml
 -- (the first `version = ...` in this file)
-local VERSION = "1.1"
+local VERSION = "1.2"
 
 local mp = "scripts/MaxYari/combat juice/"
 
@@ -13,6 +13,7 @@ local nearby = require("openmw.nearby")
 local util = require("openmw.util")
 local types = require("openmw.types")
 local ui = require("openmw.ui")
+local async = require("openmw.async")
 local I = require("openmw.interfaces")
 
 local DEFS = require(mp .. "defs")
@@ -427,6 +428,14 @@ local function magicColor(key) return magicColorSettings[key] end
 -- The engine's own hit position is no better - it is the victim's origin raised
 -- by a random fraction of their height, which is how a light ended up at their
 -- feet. So work it out here instead.
+--
+-- By sight first. A physics ray does not land on the body but on the box the
+-- engine moves it about in, which stands upright whatever the body is doing:
+-- with the victim knocked down, it put the light in the empty air above them.
+-- A rendering ray lands on the body as it is drawn, so two of those are tried,
+-- along the player's aim and then at the middle of the victim's bounding box,
+-- which is drawn around the same body. The box is only asked when neither
+-- finds them.
 
 local AIM_REACH = 320
 local SPARK_WINDOW = 0.35
@@ -479,26 +488,76 @@ end
 
 -- Down the camera, through the middle of the screen. Only the player has one,
 -- and it is where their attention is, so it wins when it lands on the victim.
-local function rayFromCamera(victim)
+-- reach: how far it has to go, if that is further than it would anyway.
+local function aim(reach)
     local from = camera.getPosition()
     local dir = camera.viewportToWorldVector(util.vector2(0.5, 0.5))
-    local reach = AIM_REACH + camera.getThirdPersonDistance()
-    local ok, res = pcall(nearby.castRay, from, from + dir * reach, { ignore = selfObject })
+    return from, from + dir * math.max(AIM_REACH + camera.getThirdPersonDistance(), reach or 0)
+end
+
+local function rayFromCamera(victim)
+    local from, to = aim()
+    local ok, res = pcall(nearby.castRay, from, to, { ignore = selfObject })
     if ok and res.hit and res.hitObject == victim then return res.hitPos end
     return nil
 end
 
--- ranged: a projectile's hit, whose engine position is where it struck.
-local function impactPoint(attacker, victim, enginePos, ranged)
-    if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
-        return enginePos
-    end
-    if ranged and enginePos then return enginePos end
+-- Where the victim's box says the blow landed.
+local function boxPoint(attacker, victim, enginePos)
     if attacker == selfObject then
         local aimed = rayFromCamera(victim)
         if aimed then return aimed end
     end
     return rayAtVictim(attacker, victim, chestHeight(victim, enginePos))
+end
+
+-- Where the blow is seen to have landed, handed to `found`, or nil. A hit
+-- arrives as an event, and from there a rendering ray can only be asked for:
+-- both are asked at once and answered by the next frame, and the one along
+-- the aim is believed over the one at the victim's middle.
+local function seenPoint(victim, found)
+    -- Both go as far as the far side of the victim's bounding box. A weapon's
+    -- reach is no measure of that: the engine takes it to the box the victim
+    -- stands in, and the body can lie a good way beyond.
+    local farSide, pastMiddle = 0, nil
+    local ok, box = pcall(victim.getBoundingBox, victim)
+    if ok and box then
+        local toMiddle = box.center - camera.getPosition()
+        local distance = toMiddle:length()
+        local halfDiagonal = box.halfSize:length()
+        farSide = distance + halfDiagonal
+        if distance > 1e-3 then pastMiddle = box.center + toMiddle * (halfDiagonal / distance) end
+    end
+    local from, aimedAt = aim(farSide)
+    local targets = { aimedAt, pastMiddle }
+
+    local hits, waiting = {}, #targets
+    local function answered()
+        waiting = waiting - 1
+        if waiting == 0 then found(hits[1] or hits[2]) end
+    end
+    for i, to in ipairs(targets) do
+        local asked = pcall(nearby.asyncCastRenderingRay, async:callback(function(res)
+            if res.hit and res.hitObject == victim then hits[i] = res.hitPos end
+            answered()
+        end), from, to, { ignore = selfObject })
+        if not asked then answered() end
+    end
+end
+
+-- Hands `found` where the blow landed, which by sight is a frame later.
+-- ranged: a projectile's hit, whose engine position is where it struck.
+local function impactPoint(attacker, victim, enginePos, ranged, found)
+    if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
+        return found(enginePos)
+    end
+    if ranged and enginePos then return found(enginePos) end
+    seenPoint(victim, function(seen)
+        if seen then return found(seen) end
+        -- Either may have gone in the meantime.
+        if not victim:isValid() or not attacker:isValid() then return found(enginePos) end
+        found(boxPoint(attacker, victim, enginePos))
+    end)
 end
 
 -- Sparks light their own impact, so the warm one stays out of the way of a hit
@@ -643,12 +702,10 @@ local function onAttackLanded(data)
     -- A blow that did nothing lights nothing - but an enchantment that fired
     -- did something, shield or no shield, and still lights in its colour.
     if not enchanted and data.noEffect and not effectSettings.LightNoEffectHits then return end
-    if enchanted then
-        enchantedLight(impactPoint(selfObject, data.victim, data.hitPos, data.ranged), enchanted)
-    elseif not sparkedRecently() then
-        local light = data.staminaOnly and staminaLight or hitLight
-        light(impactPoint(selfObject, data.victim, data.hitPos, data.ranged))
-    end
+    if not enchanted and sparkedRecently() then return end
+    local light = enchanted and function(pos) enchantedLight(pos, enchanted) end
+        or data.staminaOnly and staminaLight or hitLight
+    impactPoint(selfObject, data.victim, data.hitPos, data.ranged, light)
 end
 
 -- Somebody landed a hit on us. Only the camera reacts: a light on the player
@@ -772,6 +829,7 @@ return {
         [DEFS.e.AttackLanded] = onAttackLanded,
         [DEFS.e.DamageDealt] = onDamageDealt,
         [DEFS.e.ActorKilled] = onActorKilled,
+        [DEFS.e.ShowMessage] = function(text) ui.showMessage(text) end,
         OMWMusicCombatTargetsChanged = onCombatTargetsChanged,
     },
     interfaceName = "CombatJuice",

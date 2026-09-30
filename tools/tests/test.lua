@@ -257,6 +257,75 @@ end
 check(far, "with no ray landing on them, it goes on the side of their torso facing the attacker")
 stub.packages["openmw.nearby"].castRay = castRayBefore
 
+-- By sight before any of that: a physics ray lands on the upright box the
+-- engine moves the victim about in, which for one knocked down is empty air.
+local seenPos = stub.vec3(4, 95, 12)      -- on the body, where the aim meets it
+local middlePos = stub.vec3(5, 120, 9)    -- on the body, toward its middle
+stub.packages["openmw.nearby"].castRay = function() -- what the box would say
+    return { hit = true, hitObject = victim, hitPos = aimPos }
+end
+victim.box = { center = stub.vec3(0, 140, 10), halfSize = stub.vec3(60, 40, 10) } -- laid out flat
+local function struck(answers, ranged)
+    stub.renderRays = {}
+    stub.renderRayResult = answers and function(_, index) return answers[index] end or nil
+    stub.sentGlobalEvents = {}
+    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos,
+        ranged = ranged })
+    return sentLights()
+end
+local onBody = { hit = true, hitObject = victim, hitPos = seenPos }
+local middle = { hit = true, hitObject = victim, hitPos = middlePos }
+local missed = { hit = false }
+
+lights = struck({ onBody, middle })
+check(#lights == 1 and lights[1].pos == seenPos,
+      "a rendering ray along the aim that lands on the body is believed over the box")
+local eye = stub.packages["openmw.camera"].getPosition()
+local aimed, atMiddle = stub.renderRays[1], stub.renderRays[2]
+check(#stub.renderRays == 2 and aimed.options.ignore == stub.player and atMiddle.options.ignore == stub.player,
+      "two are asked for, neither stopping at the player's own body")
+local through = atMiddle.to - eye
+local toBox = victim.box.center - eye
+check(through:length() > toBox:length()
+      and (through:normalize() - toBox:normalize()):length() < 1e-6,
+      "the second through the middle of the victim's bounding box and out the far side")
+-- A weapon's reach is measured to the box the victim stands in; the body can
+-- lie further off than the usual 320.
+local farSide = toBox:length() + victim.box.halfSize:length()
+check(farSide > 320 and math.abs((aimed.to - eye):length() - farSide) < 1e-6,
+      "and the first as far as that far side, when the body lies further than it would go anyway")
+
+lights = struck({ missed, middle })
+check(#lights == 1 and lights[1].pos == middlePos,
+      "aimed past them, it is lit where the ray at their middle lands")
+lights = struck({ { hit = true, hitObject = stub.newObject("static"), hitPos = seenPos }, missed })
+check(#lights == 1 and lights[1].pos == aimPos,
+      "with something else in the way of both, the box is asked as before")
+
+stub.holdRenderRays = true
+lights = struck(nil)
+check(#lights == 0, "nothing is lit until both rays have been answered")
+stub.renderRays[2].answer(middle)
+check(#sentLights() == 0, "not by the second alone")
+stub.renderRays[1].answer(onBody)
+lights = sentLights()
+check(#lights == 1 and lights[1].pos == seenPos, "and the aim wins whichever comes back first")
+stub.holdRenderRays = false
+
+victim.getBoundingBox = function() error("no box") end
+lights = struck({ missed, middle })
+check(#stub.renderRays == 1 and #lights == 1 and lights[1].pos == aimPos,
+      "a victim with no bounding box to aim at gets the one ray")
+check(math.abs((stub.renderRays[1].to - eye):length() - 320) < 1e-6, "of the usual length")
+victim.getBoundingBox = nil
+victim.box = nil
+
+lights = struck({ onBody, middle }, true)
+check(#stub.renderRays == 0 and #lights == 1 and lights[1].pos == enginePos,
+      "an arrow's hit asks for none of this")
+stub.renderRayResult = nil
+stub.packages["openmw.nearby"].castRay = castRayBefore
+
 -- Being hit lights nothing: it would be lighting the player's own face.
 calls = 1
 stub.sentGlobalEvents = {}
@@ -998,19 +1067,23 @@ check(die() == nil and npc.equipment == kit, "without LuaPhysics nothing is take
 stub.contentFiles["LuaPhysicsEngine.omwscripts"] = nil
 
 gear = die()
+-- Starting kit belongs to whoever wore it, as the engine stamps it.
+for _, entry in ipairs(gear.items) do entry.item.owner.recordId = npc.recordId end
 stub.sentObjectEvents = {}
 math.randomseed(1) -- the scatter is random; a single item can go a little backwards
 global.eventHandlers.CJ_ThrowGear(gear)
-local impulses, upward, awayward = 0, true, 0
+local impulses, upward, awayward, unowned = 0, true, 0, true
 for _, ev in ipairs(stub.sentObjectEvents) do
     if ev.name == "LuaPhysics_ApplyImpulse" and ev.target.teleported then
         impulses = impulses + 1
         upward = upward and ev.data.impulse.z > 0
         awayward = awayward + ev.data.impulse.x
+        unowned = unowned and ev.target.owner.recordId == nil
     end
 end
 check(impulses == #gear.items, "the global script puts every item in the world and throws it")
 check(upward and awayward > 0, "up and away from the killer, rather than dropped")
+check(unowned, "and belonging to nobody, so picking it up is not theft")
 
 -- Bound gear stays on: thrown into the world, the spell that summoned it could
 -- never take it back.
@@ -1042,6 +1115,122 @@ flew = thrownItems(die())
 check(flew[coin] and not flew[boundDagger], "carried bound gear stays in the corpse when the rest spills")
 gearSetting("SpillInventory", false)
 npc.carried = nil
+
+-- A summon's gear goes with its body: the engine takes the corpse away when
+-- its death animation ends, and what was thrown clear would be left for keeps.
+local function later(seconds)
+    stub.realTime = stub.realTime + seconds
+    stub.sentGlobalEvents = {}
+    stub.spawnedVfx = {}
+    stub.physicsRemoved = {}
+    global.engineHandlers.onUpdate()
+    local removed, asked = {}, 0
+    for _, obj in ipairs(stub.physicsRemoved) do removed[obj] = true end
+    for _, ev in ipairs(stub.sentGlobalEvents) do
+        if ev.name == "SpawnVfx" then asked = asked + 1 end
+    end
+    return removed, #stub.spawnedVfx, asked
+end
+
+kit = dress()
+gear = die()
+check(gear and gear.follower == nil, "an actor following nobody is not marked as a follower")
+global.eventHandlers.CJ_ThrowGear(gear)
+npc.count = 0
+check(next((later(0.3))) == nil, "and its gear stays when its body is cleared away")
+npc.count = 1
+
+stub.aiPackages = { { type = "Combat" }, { type = "Follow" } }
+kit = dress()
+gear = die()
+check(gear and gear.follower == true, "one with a Follow package under whatever else it is doing is")
+global.eventHandlers.CJ_ThrowGear(gear)
+check(next((later(0.3))) == nil, "while its body lies there its gear is left alone")
+local pocketed = kit[SLOT.Helmet]
+pocketed.parentContainer = stub.player
+npc.count = 0
+local removed, puffs, asked = later(0.3)
+check(removed[kit[SLOT.CarriedRight]] and removed[kit[SLOT.CarriedLeft]] and removed[kit[SLOT.Boots]],
+      "when the body goes, LuaPhysics is asked to take its gear out of the world")
+check(puffs == #gear.items - 1, "each piece with the puff a summon leaves with")
+-- Two of the engine's own global scripts answer SpawnVfx, a puff each.
+check(asked == 0, "spawned straight into the world, not through the SpawnVfx event")
+check(not pocketed:isValid() and not removed[pocketed],
+      "and a piece already picked up is taken back out of the pack, with none")
+check(next((later(0.3))) == nil, "once only")
+npc.count = 1
+
+kit = dress()
+gear = die()
+global.eventHandlers.CJ_ThrowGear(gear)
+later(10.5)
+npc.count = 0
+check(next((later(0.3))) == nil, "a follower whose body is still there ten seconds on keeps its gear for good")
+npc.count = 1
+
+kit = dress()
+gear = die()
+global.eventHandlers.CJ_ThrowGear(gear)
+later(4)
+global.engineHandlers.onLoad(global.engineHandlers.onSave())
+npc.count = 0
+check(later(0.3)[kit[SLOT.CarriedRight]], "the watch is carried across a save")
+npc.count = 1
+
+kit = dress()
+gear = die()
+global.eventHandlers.CJ_ThrowGear(gear)
+later(4)
+global.engineHandlers.onLoad(global.engineHandlers.onSave())
+later(0.02) -- the first frame of the loaded game
+later(6.5)
+npc.count = 0
+check(next((later(0.3))) == nil, "with the time it had left, not ten seconds over again")
+npc.count = 1
+
+-- LuaPhysics teleports a piece every frame it is moving, and the engine reads
+-- an item mid-teleport as a count of 0 - the same as one removed for good.
+kit = dress()
+gear = die()
+global.eventHandlers.CJ_ThrowGear(gear)
+local flying = kit[SLOT.CarriedRight]
+flying.count = 0
+npc.count = 0
+removed, puffs = later(0.3)
+check(removed[flying] and removed[kit[SLOT.CarriedLeft]] and puffs == #gear.items,
+      "a piece still in flight when its body goes is handed to LuaPhysics with the rest, which takes it from 1.1 on")
+npc.count = 1
+
+stub.aiPackages = nil
+
+-- A LuaPhysics too old to take a piece in flight gets the player told, once
+-- per game loaded, when its first update comes.
+local physics = stub.packages["openmw.interfaces"].LuaPhysics
+local function toldToUpdate()
+    stub.sentObjectEvents = {}
+    global.engineHandlers.onUpdate()
+    for _, ev in ipairs(stub.sentObjectEvents) do
+        if ev.name == "CJ_ShowMessage" and ev.target == stub.player then return ev.data end
+    end
+end
+physics.version = 1.0
+global.engineHandlers.onLoad(nil)
+local message = toldToUpdate()
+check(message and message:find("^The Combat Juice Mod: ") and message:find("LuaPhysics"),
+      "an outdated LuaPhysics has the player told, under the mod's name")
+check(toldToUpdate() == nil, "once, not every frame")
+local logged = #stub.log
+player.eventHandlers.CJ_ShowMessage(message)
+check(stub.log[logged + 1] == "ui.showMessage: " .. message, "and the player script shows it")
+physics.version = 1.1
+global.engineHandlers.onLoad(nil)
+check(toldToUpdate() == nil, "a current one does not")
+physics.version = 1.0
+stub.contentFiles["LuaPhysicsEngine.omwscripts"] = false
+global.engineHandlers.onLoad(nil)
+check(toldToUpdate() == nil, "and nor does one that is not installed at all")
+stub.contentFiles["LuaPhysicsEngine.omwscripts"] = nil
+physics.version = 1.1
 
 print("\n== a shader that will not load ==")
 stub.install(stub.player)

@@ -101,6 +101,8 @@ function M.newObject(kind, opts)
         position = opts.position or vec3(0, 0, 0),
         rotation = transform,
         scale = opts.scale or 1,
+        owner = { recordId = opts.owner },
+        count = 1,
         dead = false,
         enabled = true,
         valid = true,
@@ -110,8 +112,12 @@ function M.newObject(kind, opts)
         table.insert(M.sentObjectEvents, { target = self, name = name, data = data })
     end
     function o:teleport(cell, pos) self.cell = cell; self.pos = pos; self.enabled = true; self.teleported = true end
+    -- Around the body as it is drawn; standing, unless a test lays it down.
+    function o:getBoundingBox()
+        return self.box or { center = self.position + vec3(0, 0, 64), halfSize = vec3(16, 16, 64) }
+    end
     table.insert(M.allObjects, o)
-    function o:remove() self.valid = false end
+    function o:remove() self.valid = false; self.count = 0 end
     return o
 end
 
@@ -273,8 +279,19 @@ packages["openmw.types"] = {
     Item = { itemData = function(o) return { enchantmentCharge = o.charge } end },
     Armor = { objectIsInstance = function(o) return o ~= nil and o.kind == "armor" end },
     Clothing = { objectIsInstance = function(o) return o ~= nil and o.kind == "clothing" end },
+    Static = { record = function(id) return M.statics[id] end },
 }
+M.statics = { VFX_Summon_End = { model = "meshes/e/magic_summon.nif" } }
+M.aiPackages = nil -- what the script's own actor is doing, the active package first
+M.spawnedVfx = {}
+M.physicsRemoved = {}
 packages["openmw.world"] = {
+    players = { player },
+    vfx = {
+        spawn = function(model, pos, options)
+            table.insert(M.spawnedVfx, { model = model, pos = pos, options = options })
+        end,
+    },
     setSimulationTimeScale = function(s) M.timeScale = s; note("timeScale=%.3f", s) end,
     getSimulationTimeScale = function() return M.timeScale end,
     createRecord = function(draft)
@@ -294,12 +311,22 @@ packages["openmw.world"] = {
     end,
 }
 M.rayResult = { hit = false }
+-- Rendering rays: every one asked for, in order. Each is answered at once, by
+-- M.renderRayResult(ray, index) or with a miss, unless M.holdRenderRays leaves
+-- that to the test, which then calls ray.answer itself as the next frame would.
+M.renderRays = {}
 packages["openmw.nearby"] = {
     players = { player },
     actors = {},
     castRay = function(from, to, opts)
         M.lastRay = { from = from, to = to, options = opts }
         return M.rayResult
+    end,
+    asyncCastRenderingRay = function(callback, from, to, opts)
+        local ray = { from = from, to = to, options = opts, answer = callback }
+        table.insert(M.renderRays, ray)
+        if M.holdRenderRays then return end
+        callback(M.renderRayResult and M.renderRayResult(ray, #M.renderRays) or { hit = false })
     end,
     COLLISION_TYPE = { World = 1, Door = 2, Actor = 4, HeightMap = 8, Default = 15 },
 }
@@ -416,6 +443,16 @@ packages["openmw.interfaces"] = {
     },
     UI = { isHudVisible = function() return true end },
     Combat = { addOnHitHandler = function(fn) table.insert(M.hitHandlers, fn) end },
+    -- LuaPhysics' global interface; what it was asked to remove goes in M.physicsRemoved.
+    LuaPhysics = {
+        version = 1.1,
+        removeObject = function(obj) table.insert(M.physicsRemoved, obj) end,
+    },
+    AI = {
+        forEachPackage = function(callback)
+            for _, package in ipairs(M.aiPackages or {}) do callback(package) end
+        end,
+    },
     MSS = {
         version = 1,
         addDamageListener = function(fn) table.insert(M.damageListeners, fn) end,

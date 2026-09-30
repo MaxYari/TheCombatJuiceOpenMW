@@ -204,9 +204,27 @@ local function updateLights()
     end
 end
 
+-- Outdated dependencies -----------------------------------------------------
+
+local OUTDATED_PHYSICS = "The Combat Juice Mod: LuaPhysics is out of date. Please update it"
+    .. " to version 1.4 or newer, or gear knocked off summons can break it."
+
+-- Checked once per game loaded, on its first update, when the player is there
+-- to be told.
+local dependenciesChecked = false
+
+local function checkDependencies()
+    dependenciesChecked = true
+    if not looseGear.physicsOutdated() then return end
+    for _, player in ipairs(world.players) do
+        player:sendEvent(DEFS.e.ShowMessage, OUTDATED_PHYSICS)
+    end
+end
+
 -- Engine handlers -----------------------------------------------------------
 
 local function onUpdate()
+    if not dependenciesChecked then checkDependencies() end
     if tweener then
         -- Tweener wants elapsed real time, and dt here is already slowed down.
         local t = now()
@@ -220,6 +238,7 @@ local function onUpdate()
         applyScale()
     end
     if #activeLights > 0 then updateLights() end
+    looseGear.update()
 end
 
 local function resetTime()
@@ -234,13 +253,15 @@ local function onSave()
     for key, set in pairs(lightSets) do
         saved[key] = { recordId = set.recordId, pool = set.pool }
     end
-    return { lightSets = saved }
+    return { lightSets = saved, looseGear = looseGear.save() }
 end
 
 local function onLoad(state)
     resetTime()
+    dependenciesChecked = false
     activeLights = {}
     lightSets = {}
+    looseGear.load(state and state.looseGear)
     if state and state.lightSets then
         for key, set in pairs(state.lightSets) do
             lightSets[key] = { recordId = set.recordId, pool = set.pool or {}, busy = {} }

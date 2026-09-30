@@ -16,6 +16,7 @@
 local mp = "scripts/MaxYari/combat juice/"
 
 local core = require("openmw.core")
+local I = require("openmw.interfaces")
 local markup = require("openmw.markup")
 local storage = require("openmw.storage")
 local types = require("openmw.types")
@@ -31,6 +32,18 @@ M.PHYSICS_CONTENT_FILE = "LuaPhysicsEngine.omwscripts"
 function M.physicsAvailable()
     local ok, has = pcall(function() return core.contentFiles.has(M.PHYSICS_CONTENT_FILE) end)
     return ok and has or false
+end
+
+-- The version of LuaPhysics' global interface this needs: the first that can
+-- remove an object in flight, or one already gone (see vanish).
+M.PHYSICS_INTERFACE_VERSION = 1.1
+
+--- LuaPhysics is installed, but older than that. Global scripts only: the
+--- interface asked is the global one.
+function M.physicsOutdated()
+    if not M.physicsAvailable() then return false end
+    local physics = I.LuaPhysics
+    return physics == nil or (physics.version or 0) < M.PHYSICS_INTERFACE_VERSION
 end
 
 -- Settings ------------------------------------------------------------------
@@ -175,6 +188,19 @@ local function awayFrom(actor, attacker)
     return flat:normalize()
 end
 
+-- Whether this actor follows somebody, as a summoned creature follows whoever
+-- summoned it - the engine tells a summon's corpse from any other by the same
+-- sign. Asked once, as it dies; the global half takes it from there.
+local function isFollower()
+    local follows = false
+    local ok = pcall(function()
+        I.AI.forEachPackage(function(package)
+            if package.type == "Follow" then follows = true end
+        end)
+    end)
+    return ok and follows
+end
+
 --- Take what comes loose off `actor` (openmw.self, which setEquipment needs) and
 --- hand it to the global script to throw. `attacker` may be nil.
 function M.strip(actor, attacker)
@@ -251,6 +277,7 @@ function M.strip(actor, attacker)
         actor = actor.object,
         items = thrown,
         away = awayFrom(actor, attacker),
+        follower = isFollower() or nil,
     })
 end
 
@@ -301,6 +328,16 @@ local function throwOne(actor, item, side, height, away)
         * util.transform.rotateX(lean())
         * util.transform.rotateY(lean())
 
+    -- An actor's starting kit is stamped with that actor as its owner, and
+    -- dying does not lift it: a corpse can be looted because the corpse is
+    -- dead, and the item itself is never asked. Lying in the world it is, so
+    -- picking it up in front of anyone left standing would be theft. Lifted
+    -- before the teleport, which copies the item out as it is now.
+    pcall(function()
+        item.owner.recordId = nil
+        item.owner.factionId = nil
+    end)
+
     local moved = pcall(function()
         item:teleport(actor.cell, position, { rotation = rotation })
     end)
@@ -320,6 +357,73 @@ local function throwOne(actor, item, side, height, away)
     return true
 end
 
+-- Gear that goes when its body does -------------------------------------------
+--
+-- The engine takes a summoned creature's corpse away as soon as its death
+-- animation ends, and whatever it carried with it. Gear already thrown clear
+-- would be left behind for keeps - a Dremora's weapon off every summon - so
+-- the body of a follower is watched for a while after it dies, and if it goes,
+-- its gear goes after it: out of the world, or out of whoever picked it up.
+--
+-- Any follower is watched, a summon or not, since Lua is not told which it
+-- is. A companion's body simply stays, and the watch runs out.
+
+-- In simulation time, which is what the death animation plays in: the kill's
+-- slow motion stretches both alike.
+local WATCH_TIME = 10
+local WATCH_INTERVAL = 0.2
+
+-- What the engine plays where a summon's body was. Sized for a creature.
+local VANISH_VFX = "VFX_Summon_End"
+local VANISH_VFX_SCALE = 0.5
+
+-- { actor, items, expires }. One out of a save has the time it had left
+-- instead, until the first check turns that back into an expiry.
+local watched = {}
+local nextCheckAt = 0
+local vanishModel = nil -- false once looked for and not found
+
+-- A removed object stays valid, with a count of 0.
+local function isGone(object)
+    local ok, there = pcall(function() return object:isValid() and object.count > 0 end)
+    return not (ok and there)
+end
+
+-- Takes the item out of the game, wherever it is. A count of 0 is an item
+-- removed for good, or one in the middle of a teleport - which is every frame
+-- LuaPhysics has it moving, since the engine zeroes the count when a teleport
+-- is asked for and puts it back once it happens. LuaPhysics takes either;
+-- remove() throws on both.
+local function vanish(item)
+    if not item:isValid() then return end
+    local count = item.count
+
+    -- Picked up already: taken back out of the pack, quietly.
+    if item.parentContainer ~= nil then
+        if count > 0 then item:remove() end
+        return
+    end
+
+    if vanishModel == nil then
+        local ok, record = pcall(types.Static.record, VANISH_VFX)
+        vanishModel = ok and record and record.model or false
+    end
+    -- Spawned here rather than through the SpawnVfx event, which two of the
+    -- engine's own global scripts answer, a puff each. Required here and not at
+    -- the top because actor scripts load this file too, and they have no world.
+    if vanishModel then
+        require("openmw.world").vfx.spawn(vanishModel, item.position, { scale = VANISH_VFX_SCALE })
+    end
+
+    -- LuaPhysics keeps a body of its own for the item, and only clears it up
+    -- if it is the one asked to do the removing.
+    if I.LuaPhysics ~= nil then
+        I.LuaPhysics.removeObject(item)
+    elseif count > 0 then
+        item:remove()
+    end
+end
+
 --- Put the items in the world and throw them. They arrive already unequipped,
 --- sitting loose in the dead actor's inventory.
 function M.throw(data)
@@ -331,9 +435,69 @@ function M.throw(data)
     local actor = data and data.actor
     if actor == nil or not actor:isValid() or data.items == nil then return end
 
+    local thrown = {}
     for _, entry in ipairs(data.items) do
-        if entry.item ~= nil and entry.item:isValid() then
-            throwOne(actor, entry.item, entry.side or 0, entry.height, data.away)
+        if entry.item ~= nil and entry.item:isValid()
+            and throwOne(actor, entry.item, entry.side or 0, entry.height, data.away) then
+            thrown[#thrown + 1] = entry.item
+        end
+    end
+
+    if data.follower and #thrown > 0 then
+        watched[#watched + 1] = {
+            actor = actor,
+            items = thrown,
+            expires = core.getSimulationTime() + WATCH_TIME,
+        }
+    end
+end
+
+--- Once a frame, from the global script: whether a watched body has gone.
+function M.update()
+    if #watched == 0 then return end
+    local now = core.getSimulationTime()
+    if now < nextCheckAt then return end
+    nextCheckAt = now + WATCH_INTERVAL
+
+    for i = #watched, 1, -1 do
+        local entry = watched[i]
+        entry.expires = entry.expires or now + entry.left
+        if isGone(entry.actor) then
+            for _, item in ipairs(entry.items) do pcall(vanish, item) end
+            table.remove(watched, i)
+        elseif now >= entry.expires then
+            table.remove(watched, i)
+        end
+    end
+end
+
+--- What is being watched, for the save: a game saved while a summon is still
+--- falling must not load with its gear left behind.
+function M.save()
+    if #watched == 0 then return nil end
+    local now = core.getSimulationTime()
+    local saved = {}
+    for i, entry in ipairs(watched) do
+        saved[i] = {
+            actor = entry.actor,
+            items = entry.items,
+            left = entry.expires and entry.expires - now or entry.left,
+        }
+    end
+    return saved
+end
+
+function M.load(saved)
+    watched = {}
+    nextCheckAt = 0
+    if type(saved) ~= "table" then return end
+    for _, entry in ipairs(saved) do
+        if type(entry.items) == "table" then
+            watched[#watched + 1] = {
+                actor = entry.actor,
+                items = entry.items,
+                left = math.min(tonumber(entry.left) or 0, WATCH_TIME),
+            }
         end
     end
 end
