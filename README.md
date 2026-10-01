@@ -62,6 +62,7 @@ Have fun!
 - When an enchanted weapon's cast-on-strike enchantment actually fires, the hit lights up in its colour: fire, frost, shock and poison have their own, anything else uses its school of magic's colour, and magic effects added by other mods bring their own colour. Hit markers of spell damage take the same colours, while weapon hits keep the ordinary marker colour. The colours are in Magic Colours, at the bottom of the settings.
 - Blows that take only stamina (punches, mostly) get the hit marker in green and a dimmer, warm orange light. A blow that takes health as well gets the ordinary ones. Stamina-draining spells don't show anything.
 - With [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) installed, its reticle fades out while a kill marker drawn over the crosshair is showing, and fades back in with it. This needs a Dynamic Reticle newer than 1.4.1.
+- Throwing darts, stars and knives no longer sounds like a fresh weapon being drawn after every throw: the engine's equip sound, played as the next one of the stack comes into the hand, is cut off. Drawing the stack still sounds as it always did. This applies to everyone throwing, not only you, and can be turned off in Sound Tweaks.
 - Hit markers are simple definition files in the `hitmarkers/` folder. To add your own, copy one of them, point it at your textures, and it will show up in the settings (this works from other mods too).
 
 ## ⚔︎ Credits

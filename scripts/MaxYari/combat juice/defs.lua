@@ -71,6 +71,7 @@ return {
         markers = "SettingsCombatJuiceMarkers",
         markerSounds = "SettingsCombatJuiceMarkerSounds",
         looseGear = "SettingsCombatJuiceLooseGear", -- global storage, see settings_global.lua
+        soundTweaks = "SettingsCombatJuiceSoundTweaks", -- global storage too
     },
 
     -- Impact Effects materials that throw sparks. Everything else on an actor

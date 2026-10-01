@@ -1,12 +1,14 @@
--- The one settings group that lives in global storage: gear knocked loose on
--- death is decided by the dying actor's own script, which can read global
--- storage but not the player's. It still shows on the Combat Juice page.
+-- The settings groups that live in global storage, for what NPCs and creatures
+-- decide in their own scripts, which can read global storage but not the
+-- player's: gear knocked loose on death, and the sound of their throws. They
+-- still show on the Combat Juice page.
 
 local I = require('openmw.interfaces')
 
 local mp = "scripts/MaxYari/combat juice/"
 local DEFS = require(mp .. "defs")
 local looseGear = require(mp .. "loose_gear")
+local quietThrows = require(mp .. "quiet_throws")
 
 local defaults = looseGear.DEFAULTS
 
@@ -53,5 +55,24 @@ I.Settings.registerGroup {
         checkbox('SpillInventory', 'Spill The Inventory',
             "Everything carried but not worn bursts out and scatters - coin, potions, keys. " ..
             "At most 50 items fly per death."),
+    },
+}
+
+I.Settings.registerGroup {
+    key = DEFS.settings.soundTweaks,
+    page = 'CombatJuicePage',
+    l10n = 'CombatJuice',
+    name = 'Sound Tweaks',
+    description = "Fixes for the game's own sounds, where they spoil the feel of a fight.",
+    order = 8,
+    permanentStorage = true,
+    settings = {
+        {
+            key = 'MuteThrownReequip',
+            renderer = 'checkbox',
+            default = quietThrows.DEFAULTS.MuteThrownReequip,
+            name = 'Mute Re-equip Sound After A Throw',
+            description = "Thrown weapons play the equip sound after every throw. This removes that sound.",
+        },
     },
 }

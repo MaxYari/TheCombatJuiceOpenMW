@@ -9,6 +9,7 @@ M.note = note
 M.realTime = 100.0
 M.allObjects = {}
 M.sentSounds = {}
+M.stoppedSounds = {}
 M.lastLightRecord = nil
 M.settingsStore = {}     -- [section][key] = value
 M.globalStore = {}       -- [section][key] = value
@@ -152,6 +153,7 @@ packages["openmw.core"] = {
         playSoundFile3d = function(path, obj, opts)
             table.insert(M.sentSounds, { path = path, options = opts })
         end,
+        stopSound3d = function(id, obj) table.insert(M.stoppedSounds, { id = id, object = obj }) end,
         isEnabled = function() return true end,
     },
 }
@@ -438,7 +440,7 @@ packages["openmw.interfaces"] = {
         end,
     },
     AnimationController = {
-        addTextKeyHandler = function(_, fn) table.insert(M.textKeyHandlers, fn) end,
+        addTextKeyHandler = function(group, fn) table.insert(M.textKeyHandlers, { group = group, fn = fn }) end,
         playBlendedAnimation = function() end,
     },
     UI = { isHudVisible = function() return true end },

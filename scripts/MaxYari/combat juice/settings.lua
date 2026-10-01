@@ -204,7 +204,7 @@ I.Settings.registerGroup {
     l10n = 'CombatJuice',
     name = 'Enchanted Hit Lights',
     description = "Enchanted weapons have their own on-hit flashes of light based on ecnhantment spell color or a school of magic. It makes enchanted weapons surprisingly more badass. The colours can be tweaked in Magic Colours, below.",
-    order = 8,
+    order = 9,
     permanentStorage = true,
     settings = {
         checkbox('EnchantLightEnabled', 'Colour Hit Lights By Enchantment', true,
@@ -317,7 +317,7 @@ I.Settings.registerGroup {
     l10n = 'CombatJuice',
     name = 'Magic Colours',
     description = "The colours of magic, for enchanted hit lights and for hit markers of spell damage. Fire, frost, shock and poison have their own, anything else takes its school's. Magic effects added by other mods bring their own colour.",
-    order = 9,
+    order = 10,
     permanentStorage = true,
     settings = {
         color('FireColor', 'Fire', 1.0, 0.28, 0.15, nil),

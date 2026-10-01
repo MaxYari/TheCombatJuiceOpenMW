@@ -24,6 +24,7 @@ local hitmarkers = require(mp .. "hitmarkers")
 local soundFiles = require(mp .. "sounds")
 local enchantLight = require(mp .. "enchant_light")
 local magicColors = require(mp .. "magic_colors")
+local quietThrows = require(mp .. "quiet_throws")
 require(mp .. "settings")
 
 -- Max Yari's Script Services (MSS) is a required dependency: checked once, when this script loads.
@@ -42,6 +43,8 @@ local enchantSettings = SettingsHelper:new(DEFS.settings.enchantLights)
 local magicColorSettings = SettingsHelper:new(DEFS.settings.magicColors)
 
 local selfObject = omwself.object
+
+quietThrows.install(omwself)
 
 local function now()
     return core.getRealTime()

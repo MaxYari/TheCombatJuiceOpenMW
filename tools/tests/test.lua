@@ -52,6 +52,16 @@ local function sentSlowdown()
     end
 end
 
+-- Fires an animation text key at the handlers listening for its group, the way
+-- I.AnimationController hands them out. What they stopped lands in stub.stoppedSounds.
+local function textKey(group, key)
+    stub.stoppedSounds = {}
+    for _, h in ipairs(stub.textKeyHandlers) do
+        if h.group == group or h.group == "" then h.fn(group, key) end
+    end
+    return stub.stoppedSounds
+end
+
 local function sentLights()
     local out = {}
     for _, e in ipairs(stub.sentGlobalEvents) do
@@ -71,7 +81,21 @@ print("\n== loading player.lua ==")
 stub.enableImpactEffects()
 local player = loadScript("player.lua")
 check(#stub.settingsPages == 1, "one settings page registered")
-check(#stub.settingsGroups == 10, "nine settings groups from the player - one only the logo - and one from global.lua")
+check(#stub.settingsGroups == 11, "nine settings groups from the player - one only the logo - and two from global.lua")
+
+local stopped = textKey("throwweapon", "shoot follow attach")
+check(#stopped == 1 and stopped[1].id == "Item Weapon Blunt Up" and stopped[1].object.object == stub.player,
+      "the next thrown weapon coming into the player's hand makes no equip sound")
+check(#textKey("throwweapon", "shoot release") == 0 and #textKey("throwweapon", "equip attach") == 0,
+      "but the rest of the throw, and drawing the stack, are left alone")
+local TWEAKS = "SettingsCombatJuiceSoundTweaks"
+local tweaksGroup
+for _, g in ipairs(stub.settingsGroups) do if g.key == TWEAKS then tweaksGroup = g end end
+check(tweaksGroup and tweaksGroup.order == 8 and tweaksGroup.settings[1].default == true,
+      "the setting for it sits in Sound Tweaks, above Enchanted Hit Lights, and is on by default")
+stub.globalStore[TWEAKS] = { MuteThrownReequip = false }
+check(#textKey("throwweapon", "shoot follow attach") == 0, "turned off, the engine's sound is left to play")
+stub.globalStore[TWEAKS] = nil
 
 local slow = stub.settingsStore["SettingsCombatJuiceSlowdown"]
 check(slow.SmallSlowdownTrigger == "Every kill", "the short slow motion defaults to every kill")
@@ -884,12 +908,14 @@ check(stub.lastLightRecord and stub.lastLightRecord.isNegative,
 print("\n== loading actor.lua ==")
 local npc = stub.newObject("npc", { id = "bandit_z" })
 stub.install(npc)
-stub.hitHandlers, stub.damageListeners = {}, {}
+stub.hitHandlers, stub.damageListeners, stub.textKeyHandlers = {}, {}, {}
 -- A mod pointing a bound spell at an item of its own, before the first death
 -- reads what never comes loose.
 stub.gmsts.sMagicBoundCuirassID = "Mod_Bound_Cuirass"
 local actor = loadScript("actor.lua")
 check(#stub.hitHandlers == 1, "actor registered an onHit handler")
+stopped = textKey("throwweapon", "shoot follow attach")
+check(#stopped == 1 and stopped[1].object.object == npc, "and an NPC's throws are as quiet as the player's")
 actor.engineHandlers.onActive()
 check(#stub.damageListeners == 1, "actor registered its MSS damage listener")
 

@@ -12,12 +12,15 @@ local I = require('openmw.interfaces')
 
 local DEFS = require(mp .. "defs")
 local looseGear = require(mp .. "loose_gear")
+local quietThrows = require(mp .. "quiet_throws")
 
 local selfObject = omwself.object
 
 -- Birds and other harmless ambient creatures never take part in this.
 local recordBlackList = { ab01alsonar = true, ab01bird01 = true }
 if recordBlackList[omwself.recordId] then return end
+
+quietThrows.install(omwself)
 
 local lastHitByPlayer = 0
 
