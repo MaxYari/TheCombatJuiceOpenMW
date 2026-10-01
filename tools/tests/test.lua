@@ -193,13 +193,14 @@ setting("Flash", "FlashOn", "Short slow motion")
 
 print("\n== camera shake and impact lights ==")
 local victim = stub.newObject("npc", { id = "unarmoured", position = stub.vec3(0, 100, 0) })
-local enginePos = stub.vec3(0, 0, 5)      -- the engine's guess, down by the feet
-local aimPos = stub.vec3(1, 90, 80)       -- where our camera ray lands on them
-local sidePos = stub.vec3(2, 88, 78)      -- where a ray straight at them lands
+local enginePos = stub.vec3(0, 0, 5)      -- where the engine put the blood
 
--- Looking right at them: the camera ray wins, because that is where the
--- player's attention is.
-stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
+-- No rendering ray lands on them (the stub misses every one unless told
+-- otherwise), so the light goes where the engine put the blood. Nothing is
+-- asked of physics.
+local castRayBefore = stub.packages["openmw.nearby"].castRay
+local physicsAsked = false
+stub.packages["openmw.nearby"].castRay = function() physicsAsked = true return { hit = false } end
 stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
 player.eventHandlers.CJ_DamageDealt({ victim = victim, fraction = 0.25, hit = true, own = true, source = "melee" })
@@ -208,32 +209,14 @@ local moved = math.abs(stub.cameraExtras.pitch) + math.abs(stub.cameraExtras.yaw
     + math.abs(stub.cameraExtras.roll)
 check(moved > 0 and moved < math.rad(15), "a landed hit shakes the camera")
 local lights = sentLights()
-check(#lights == 1 and lights[1].pos == aimPos, "and lights it where the camera was pointed")
+check(#lights == 1 and lights[1].pos == enginePos and not physicsAsked,
+      "and, with no ray landing on them, lights it where the engine put the blood")
 check(lights[1] and lights[1].r > lights[1].b, "with the warm light")
 -- Power scales the colour, because that is what a Morrowind light's brightness
 -- is; the radius is only its reach.
-check(lights[1] and lights[1].power < 1 and lights[1].radius == 90,
+check(lights[1] and lights[1].power < 1
+      and lights[1].radius == stub.settingsStore.SettingsCombatJuiceEffects.HitLightRadius,
       "dimmed by power rather than by shrinking its reach")
-
--- Swinging at someone off to the side: the camera ray misses them, so the point
--- comes from a ray straight at them instead. This is the case Impact Effects
--- cannot answer at all.
-local calls = 0
-stub.packages["openmw.nearby"].castRay = function(from, to, opts)
-    calls = calls + 1
-    stub.lastRay = { from = from, to = to }
-    if calls == 1 then return { hit = true, hitObject = stub.newObject("static") } end
-    return { hit = true, hitObject = victim, hitPos = sidePos }
-end
-stub.sentGlobalEvents = {}
-player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-lights = sentLights()
-check(#lights == 1 and lights[1].pos == sidePos,
-      "a hit away from the crosshair is lit from a ray straight at the victim")
-check(stub.lastRay and math.abs(stub.lastRay.from.z - stub.lastRay.to.z) < 1e-9,
-      "and that ray is level, at chest height rather than at their feet")
-check(stub.lastRay and stub.lastRay.from.z > victim.position.z + 40,
-      "which is well above the ground")
 
 local arrowPos = stub.vec3(3, 97, 71)
 stub.sentGlobalEvents = {}
@@ -241,29 +224,9 @@ player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPo
 lights = sentLights()
 check(#lights == 1 and lights[1].pos == arrowPos, "an arrow's hit is lit where the arrow struck")
 
-stub.rayResult = { hit = false }
-local castRayBefore = stub.packages["openmw.nearby"].castRay
-stub.packages["openmw.nearby"].castRay = function() return { hit = false } end
-local far = true
-for _ = 1, 20 do
-    stub.realTime = stub.realTime + 1
-    stub.sentGlobalEvents = {}
-    player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = true, hitPos = enginePos })
-    local p = sentLights()[1].pos
-    local dx, dy = p.x - victim.position.x, p.y - victim.position.y
-    -- the player stands at the origin, the victim 100 units along y
-    far = far and dy < 0 and math.sqrt(dx * dx + dy * dy) < 25 and p.z > victim.position.z + 40
-end
-check(far, "with no ray landing on them, it goes on the side of their torso facing the attacker")
-stub.packages["openmw.nearby"].castRay = castRayBefore
-
--- By sight before any of that: a physics ray lands on the upright box the
--- engine moves the victim about in, which for one knocked down is empty air.
+-- By sight before any of that.
 local seenPos = stub.vec3(4, 95, 12)      -- on the body, where the aim meets it
 local middlePos = stub.vec3(5, 120, 9)    -- on the body, toward its middle
-stub.packages["openmw.nearby"].castRay = function() -- what the box would say
-    return { hit = true, hitObject = victim, hitPos = aimPos }
-end
 victim.box = { center = stub.vec3(0, 140, 10), halfSize = stub.vec3(60, 40, 10) } -- laid out flat
 local function struck(answers, ranged)
     stub.renderRays = {}
@@ -278,26 +241,33 @@ local middle = { hit = true, hitObject = victim, hitPos = middlePos }
 local missed = { hit = false }
 local eye = stub.packages["openmw.camera"].getPosition()
 -- Where a light found on the skin is put: lifted off it, back toward the eye,
--- by 3.5 units.
+-- by 0.7 units.
 local function offSkin(onSkin)
-    return onSkin + (eye - onSkin):normalize() * 3.5
+    return onSkin + (eye - onSkin):normalize() * 0.7
 end
 local function at(light, pos) return light ~= nil and (light.pos - pos):length() < 1e-6 end
 
 lights = struck({ onBody, middle })
 check(#lights == 1 and at(lights[1], offSkin(seenPos)),
       "a rendering ray along the aim that lands on the body is believed over the box")
-check(math.abs((lights[1].pos - seenPos):length() - 3.5) < 1e-6
+check(math.abs((lights[1].pos - seenPos):length() - 0.7) < 1e-6
       and (lights[1].pos - eye):length() < (seenPos - eye):length(),
-      "and the light goes 3.5 units (about 5 cm) off the skin, toward the eye")
+      "and the light goes 0.7 units (about 1 cm) off the skin, toward the eye")
 local aimed, atMiddle = stub.renderRays[1], stub.renderRays[2]
 check(#stub.renderRays == 2 and aimed.options.ignore == stub.player and atMiddle.options.ignore == stub.player,
       "two are asked for, neither stopping at the player's own body")
-local through = atMiddle.to - eye
+-- Where the second ray passes the middle of the box, front to back: the eye
+-- looks along y.
+local function crossing(ray)
+    local along = (victim.box.center.y - eye.y) / (ray.to.y - eye.y)
+    return eye + (ray.to - eye) * along
+end
+local crossed = crossing(atMiddle)
+check(math.abs(crossed.z - 18) < 1e-6,
+      "looking level over a body laid out flat, the second goes a tenth of its height under its top")
+check((atMiddle.to - crossed):length() > victim.box.halfSize:length() - 1e-6,
+      "and out the far side of its box")
 local toBox = victim.box.center - eye
-check(through:length() > toBox:length()
-      and (through:normalize() - toBox:normalize()):length() < 1e-6,
-      "the second through the middle of the victim's bounding box and out the far side")
 -- A weapon's reach is measured to the box the victim stands in; the body can
 -- lie further off than the usual 320.
 local farSide = toBox:length() + victim.box.halfSize:length()
@@ -306,10 +276,50 @@ check(farSide > 320 and math.abs((aimed.to - eye):length() - farSide) < 1e-6,
 
 lights = struck({ missed, middle })
 check(#lights == 1 and at(lights[1], offSkin(middlePos)),
-      "aimed past them, it is lit where the ray at their middle lands")
+      "aimed past them, it is lit where the second ray lands")
+
+local lowest, highest, inside = math.huge, -math.huge, true
+for _ = 1, 40 do
+    struck({ missed, middle })
+    local x = crossing(stub.renderRays[2]).x - victim.box.center.x
+    lowest, highest = math.min(lowest, x), math.max(highest, x)
+    inside = inside and math.abs(x) <= victim.box.halfSize.x * 0.5 + 1e-6
+end
+check(inside and lowest < -5 and highest > 5,
+      "side to side, it lands anywhere in the middle half of their width")
+
+-- Standing, with a drawn box that runs 70 units into the floor, as one
+-- Khajiit's did: its middle is at her knees.
+local cameraStub = stub.packages["openmw.camera"]
+local lookBefore = cameraStub.viewportToWorldVector
+victim.box = { center = stub.vec3(0, 100, 27), halfSize = stub.vec3(46, 36, 97) }
+struck({ missed, middle })
+check(math.abs(crossing(stub.renderRays[2]).z - eye.z) < 1e-6,
+      "looking at someone's chest, the second goes where the look crosses them, not to the middle of their box")
+cameraStub.viewportToWorldVector = function() return stub.vec3(0, 0.5, -0.866):normalize() end
+struck({ missed, middle })
+check(math.abs(crossing(stub.renderRays[2]).z - (victim.position.z + 12.4)) < 1e-6,
+      "looking down past their feet, a tenth of their height above the feet, not in the floor with their box")
+-- Swinging with the crosshair well off to the right of them, pitched a little
+-- down: the height is where that pitch meets them at their distance (200 off),
+-- not where the look line passes nearest them, which is close by the player.
+cameraStub.viewportToWorldVector = function() return stub.vec3(0.98, 0.2, -0.25 * math.sqrt(0.98 ^ 2 + 0.2 ^ 2)) end
+struck({ missed, middle })
+check(math.abs(crossing(stub.renderRays[2]).z - (eye.z - 0.25 * 200)) < 1e-6,
+      "aiming well off to one side, the height comes from the look's pitch at their distance")
+cameraStub.viewportToWorldVector = function() return stub.vec3(0, 0, -1) end
+struck({ missed, middle })
+check(math.abs(crossing(stub.renderRays[2]).z - (victim.position.z + 12.4)) < 1e-6,
+      "looking straight down, as low as it goes")
+cameraStub.viewportToWorldVector = function() return stub.vec3(0, 0, 1) end
+struck({ missed, middle })
+check(math.abs(crossing(stub.renderRays[2]).z - (124 - 12.4)) < 1e-6,
+      "and straight up, as high")
+cameraStub.viewportToWorldVector = lookBefore
+victim.box = { center = stub.vec3(0, 140, 10), halfSize = stub.vec3(60, 40, 10) }
 lights = struck({ { hit = true, hitObject = stub.newObject("static"), hitPos = seenPos }, missed })
-check(#lights == 1 and lights[1].pos == aimPos,
-      "with something else in the way of both, the box is asked as before")
+check(#lights == 1 and lights[1].pos == enginePos,
+      "with something else in the way of both, it goes where the blood went")
 
 stub.holdRenderRays = true
 lights = struck(nil)
@@ -323,7 +333,7 @@ stub.holdRenderRays = false
 
 victim.getBoundingBox = function() error("no box") end
 lights = struck({ missed, middle })
-check(#stub.renderRays == 1 and #lights == 1 and lights[1].pos == aimPos,
+check(#stub.renderRays == 1 and #lights == 1 and lights[1].pos == enginePos,
       "a victim with no bounding box to aim at gets the one ray")
 check(math.abs((stub.renderRays[1].to - eye):length() - 320) < 1e-6, "of the usual length")
 victim.getBoundingBox = nil
@@ -336,16 +346,9 @@ stub.renderRayResult = nil
 stub.packages["openmw.nearby"].castRay = castRayBefore
 
 -- Being hit lights nothing: it would be lighting the player's own face.
-calls = 1
 stub.sentGlobalEvents = {}
 stub.hitHandlers[1]({ attacker = victim, successful = true, hitPos = enginePos })
 check(#sentLights() == 0, "being hit ourselves lights nothing")
-
-stub.packages["openmw.nearby"].castRay = function(from, to, opts)
-    stub.lastRay = { from = from, to = to }
-    return stub.rayResult
-end
-stub.rayResult = { hit = true, hitObject = victim, hitPos = aimPos }
 
 stub.sentGlobalEvents = {}
 player.eventHandlers.CJ_AttackLanded({ victim = victim, successful = false })
@@ -521,8 +524,8 @@ local triangle = stub.hud.layout.content.faded_triangles.content[1]
 check(triangle.props.color == markerStore.StaminaMarkerColor and triangle.props.alpha > 0,
       "shows the hit marker, in the stamina colour")
 check(light and light.r == effectStore.StaminaLightColor.r and light.g == effectStore.StaminaLightColor.g
-      and light.power < effectStore.HitLightPower and light.radius < effectStore.HitLightRadius,
-      "and a warm light, dimmer and smaller than the hit light")
+      and light.power < effectStore.HitLightPower,
+      "and a warm light, dimmer than the hit light")
 light = blow(false)
 check(light and light.r == effectStore.HitLightColor.r and light.g == effectStore.HitLightColor.g,
       "a blow that took health gets the ordinary light")
@@ -569,6 +572,10 @@ sword.charge = 90                     -- and the blow spends some
 local light = strike("fire_sword")
 check(same(light, colorStore.FireColor) and light.power == enchantStore.EnchantLightPower,
       "a fire enchantment that fired lights the hit in the fire colour")
+setting("EnchantLights", "EnchantLightRadius", 200)
+sword.charge = 85
+check(strike("fire_sword").radius == 200, "at the enchanted light's own reach, not the hit light's")
+setting("EnchantLights", "EnchantLightRadius", 120)
 check(same(strike("fire_sword"), effectStore.HitLightColor),
       "a blow it had no charge to fire on is lit as a plain hit")
 sword.charge = 80

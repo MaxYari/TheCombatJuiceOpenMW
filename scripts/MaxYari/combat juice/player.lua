@@ -369,8 +369,8 @@ end
 --
 -- lift: for a light found on the body as it is drawn (see seenPoint), which
 -- way is off the skin. Right on it, it lights a hot spot rather than the blow,
--- so it is lifted off by about 5 cm (a Morrowind unit is about 1.4 cm).
-local SKIN_GAP = 3.5
+-- so it is lifted off by about 1 cm (a Morrowind unit is about 1.4 cm).
+local SKIN_GAP = 0.7
 
 local function spawnLight(pos, radius, duration, color, fallback, power, lift)
     if not pos or duration <= 0 or power == 0 then return end
@@ -397,7 +397,7 @@ end
 
 local function hitLight(pos, lift)
     if not effectSettings.HitLightEnabled then return end
-    spawnLight(pos, effectSettings.HitLightRadius or 90,
+    spawnLight(pos, effectSettings.HitLightRadius or 120,
         effectSettings.HitLightDuration or 0.06,
         effectSettings.HitLightColor, { 1.0, 0.78, 0.45 },
         effectSettings.HitLightPower or 0.33, lift)
@@ -406,15 +406,15 @@ end
 -- For a blow that only took stamina: warmer, and dimmer than the hit light.
 local function staminaLight(pos, lift)
     if not effectSettings.StaminaLightEnabled then return end
-    spawnLight(pos, effectSettings.StaminaLightRadius or 70,
+    spawnLight(pos, effectSettings.StaminaLightRadius or 120,
         effectSettings.StaminaLightDuration or 0.15,
         effectSettings.StaminaLightColor, { 1.0, 0.5, 0.15 },
         effectSettings.StaminaLightPower or 0.3, lift)
 end
 
--- For a blow whose enchantment fired: its colour, at the hit light's reach.
+-- For a blow whose enchantment fired: its colour, at its own reach.
 local function enchantedLight(pos, color, lift)
-    spawnLight(pos, effectSettings.HitLightRadius or 90,
+    spawnLight(pos, enchantSettings.EnchantLightRadius or 120,
         effectSettings.HitLightDuration or 0.2,
         color, { 1.0, 1.0, 1.0 },
         enchantSettings.EnchantLightPower or 0.6, lift)
@@ -432,66 +432,21 @@ local function magicColor(key) return magicColorSettings[key] end
 -- Impact Effects answers this by casting a ray from the camera through the
 -- middle of the screen, so it is only right when you are looking straight at
 -- what you hit; swing at someone off to the side and its ray goes past them.
--- The engine's own hit position is no better - it is the victim's origin raised
--- by a random fraction of their height, which is how a light ended up at their
--- feet. So work it out here instead.
+-- So work it out here instead.
 --
--- By sight first. A physics ray does not land on the body but on the box the
--- engine moves it about in, which stands upright whatever the body is doing:
--- with the victim knocked down, it put the light in the empty air above them.
--- A rendering ray lands on the body as it is drawn, so two of those are tried,
--- along the player's aim and then at the middle of the victim's bounding box,
--- which is drawn around the same body. The box is only asked when neither
--- finds them.
+-- By sight. A physics ray does not land on the body but on the box the engine
+-- moves it about in, which stands upright whatever the body is doing: with the
+-- victim knocked down, it put the light in the empty air above them. A
+-- rendering ray lands on the body as it is drawn, so two of those are tried,
+-- along the player's aim and then at the height they are looking on the
+-- victim (see lookPoint). When neither finds them, the light goes where the
+-- engine put the blood: a random spot on the front of their physics box, from
+-- a fifth of their height up to the top, which at least matches the splatter.
 
 local AIM_REACH = 320
 local SPARK_WINDOW = 0.35
 
 local lastSparkAt = -1000
-
--- Chest height on the victim: from the race's own height for an NPC, and from
--- the engine's hit position for anything else, since that at least lies
--- somewhere on the body.
-local function chestHeight(victim, enginePos)
-    local ok, record = pcall(types.NPC.record, victim)
-    if ok and record then
-        local raceOk, race = pcall(types.NPC.races.record, record.race)
-        if raceOk and race and race.height then
-            local height = race.height[record.isMale and "male" or "female"] * 128 * victim.scale
-            return victim.position.z + height * 0.62
-        end
-    end
-    if enginePos then return enginePos.z end
-    return victim.position.z + 50
-end
-
--- The last resort, when no ray lands on them: somewhere on the side of their
--- torso that faces the attacker. It used to go 85% of the way along the ray
--- instead, which for a shot from far off put the light yards short of them.
-local TORSO_DEPTH, TORSO_WIDTH, TORSO_HEIGHT = 20, 8, 12
-
-local function torsoGuess(attacker, victim, height)
-    local toward = attacker.position - victim.position
-    toward = util.vector3(toward.x, toward.y, 0)
-    local length = toward:length()
-    toward = length > 1e-3 and toward * (1 / length) or util.vector3(0, 1, 0)
-    local side = util.vector3(-toward.y, toward.x, 0)
-    local scale = victim.scale or 1
-    local function jitter(size) return (math.random() * 2 - 1) * size * scale end
-    return util.vector3(victim.position.x, victim.position.y, height)
-        + toward * (TORSO_DEPTH * scale)
-        + side * jitter(TORSO_WIDTH)
-        + util.vector3(0, 0, jitter(TORSO_HEIGHT))
-end
-
--- A ray from the attacker to the victim, level at that height.
-local function rayAtVictim(attacker, victim, height)
-    local from = util.vector3(attacker.position.x, attacker.position.y, height)
-    local to = util.vector3(victim.position.x, victim.position.y, height)
-    local ok, res = pcall(nearby.castRay, from, to, { ignore = attacker })
-    if ok and res.hit and res.hitObject == victim then return res.hitPos end
-    return torsoGuess(attacker, victim, height)
-end
 
 -- Down the camera, through the middle of the screen. Only the player has one,
 -- and it is where their attention is, so it wins when it lands on the victim.
@@ -502,42 +457,65 @@ local function aim(reach)
     return from, from + dir * math.max(AIM_REACH + camera.getThirdPersonDistance(), reach or 0)
 end
 
-local function rayFromCamera(victim)
-    local from, to = aim()
-    local ok, res = pcall(nearby.castRay, from, to, { ignore = selfObject })
-    if ok and res.hit and res.hitObject == victim then return res.hitPos end
-    return nil
-end
+-- Where the player is looking on the victim, as if they had turned to face
+-- them: the look's pitch carried out to the victim's distance gives the height,
+-- and which way it points is ignored - a blow can land well off to one side of
+-- the crosshair. That height is kept a tenth of their height clear of their top
+-- and bottom, and the point goes somewhere in the middle half of their width as
+-- the eye sees it. Height and
+-- width come from the bounding box, which is drawn around the body however it
+-- lies - but only its top can be trusted. Below the waist the drawn bounds run
+-- wild: one Khajiit's went 70 units into the floor, which put the middle of
+-- her box at her knees, and every flash aimed there lit her legs. So the bottom
+-- is taken as no lower than their feet.
+local EDGE_MARGIN = 0.1
+local WIDTH_SPREAD = 0.5
 
--- Where the victim's box says the blow landed.
-local function boxPoint(attacker, victim, enginePos)
-    if attacker == selfObject then
-        local aimed = rayFromCamera(victim)
-        if aimed then return aimed end
+local function lookPoint(victim, box, from, dir)
+    local top = box.center.z + box.halfSize.z
+    local bottom = math.min(top, math.max(box.center.z - box.halfSize.z, victim.position.z))
+    local margin = (top - bottom) * EDGE_MARGIN
+
+    local toX, toY = box.center.x - from.x, box.center.y - from.y
+    local flat = math.sqrt(toX * toX + toY * toY)
+    local lookFlat = math.sqrt(dir.x * dir.x + dir.y * dir.y)
+    local z
+    if lookFlat > 1e-6 then
+        z = from.z + dir.z / lookFlat * flat
+    else -- straight up or down: as far as it goes that way
+        z = dir.z > 0 and math.huge or -math.huge
     end
-    return rayAtVictim(attacker, victim, chestHeight(victim, enginePos))
+    z = math.max(bottom + margin, math.min(top - margin, z))
+
+    local point = util.vector3(box.center.x, box.center.y, z)
+    if flat < 1e-3 then return point end
+    local sideX, sideY = -toY / flat, toX / flat
+    local halfWidth = math.abs(sideX) * box.halfSize.x + math.abs(sideY) * box.halfSize.y
+    local offset = (math.random() * 2 - 1) * halfWidth * WIDTH_SPREAD
+    return point + util.vector3(sideX * offset, sideY * offset, 0)
 end
 
 -- Where the blow is seen to have landed, handed to `found` along with which way
 -- is off the skin - back toward the eye both rays came from - or nil. A hit
 -- arrives as an event, and from there a rendering ray can only be asked for:
 -- both are asked at once and answered by the next frame, and the one along
--- the aim is believed over the one at the victim's middle.
+-- the aim is believed over the one at the height they are looking.
 local function seenPoint(victim, found)
     -- Both go as far as the far side of the victim's bounding box. A weapon's
     -- reach is no measure of that: the engine takes it to the box the victim
     -- stands in, and the body can lie a good way beyond.
-    local farSide, pastMiddle = 0, nil
+    local from = camera.getPosition()
+    local farSide, pastLook = 0, nil
     local ok, box = pcall(victim.getBoundingBox, victim)
     if ok and box then
-        local toMiddle = box.center - camera.getPosition()
-        local distance = toMiddle:length()
         local halfDiagonal = box.halfSize:length()
-        farSide = distance + halfDiagonal
-        if distance > 1e-3 then pastMiddle = box.center + toMiddle * (halfDiagonal / distance) end
+        farSide = (box.center - from):length() + halfDiagonal
+        local toLook = lookPoint(victim, box, from, camera.viewportToWorldVector(util.vector2(0.5, 0.5))) - from
+        local distance = toLook:length()
+        if distance > 1e-3 then pastLook = from + toLook * ((distance + halfDiagonal) / distance) end
     end
-    local from, aimedAt = aim(farSide)
-    local targets = { aimedAt, pastMiddle }
+    local _, aimedAt = aim(farSide)
+    local targets = { aimedAt, pastLook }
 
     local hits, waiting = {}, #targets
     local function answered()
@@ -556,7 +534,8 @@ local function seenPoint(victim, found)
 end
 
 -- Hands `found` where the blow landed, which by sight is a frame later, and
--- when that is on the body as drawn, which way is off it.
+-- when that is on the body as drawn, which way is off it. Failing sight, where
+-- the engine put the blood.
 -- ranged: a projectile's hit, whose engine position is where it struck.
 local function impactPoint(attacker, victim, enginePos, ranged, found)
     if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
@@ -565,9 +544,7 @@ local function impactPoint(attacker, victim, enginePos, ranged, found)
     if ranged and enginePos then return found(enginePos) end
     seenPoint(victim, function(seen, lift)
         if seen then return found(seen, lift) end
-        -- Either may have gone in the meantime.
-        if not victim:isValid() or not attacker:isValid() then return found(enginePos) end
-        found(boxPoint(attacker, victim, enginePos))
+        found(enginePos)
     end)
 end
 

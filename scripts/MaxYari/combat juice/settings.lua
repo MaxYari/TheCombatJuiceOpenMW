@@ -162,7 +162,7 @@ I.Settings.registerGroup {
 
         checkbox('HitLightEnabled', 'Light Flash On Hits', true,
             "Generic flash for every damagin hit."),
-        number('HitLightRadius', 'Hit Light Radius', 90, 5, nil),
+        number('HitLightRadius', 'Hit Light Radius', 120, 5, nil),
         number('HitLightDuration', 'Hit Light Duration', 0.2, 0.01, nil),
         number('HitLightPower', 'Hit Light Power', 0.75, nil, nil),
         {
@@ -177,7 +177,7 @@ I.Settings.registerGroup {
 
         checkbox('StaminaLightEnabled', 'Light Flash On Stamina Hits', true,
             "Stamina hit light flash. I.e for hand-to-hand attacks."),
-        number('StaminaLightRadius', 'Stamina Hit Light Radius', 70, 5, nil),
+        number('StaminaLightRadius', 'Stamina Hit Light Radius', 120, 5, nil),
         number('StaminaLightDuration', 'Stamina Hit Light Duration', 0.15, 0.01, nil),
         number('StaminaLightPower', 'Stamina Hit Light Power', 0.3, nil, nil),
         {
@@ -209,6 +209,7 @@ I.Settings.registerGroup {
     settings = {
         checkbox('EnchantLightEnabled', 'Colour Hit Lights By Enchantment', true,
             "So, should enchanted hits be colored with the enchantment color? If false they use the normal hit color (red by default). Destruction school specific elements (Fire, Lightning, Poison e.t.c) have their own colors."),
+        number('EnchantLightRadius', 'Enchanted Hit Light Radius', 120, 5, nil),
         number('EnchantLightPower', 'Enchanted Hit Light Power', 0.6, nil, nil),
     },
 }
