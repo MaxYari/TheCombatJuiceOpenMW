@@ -366,8 +366,15 @@ end
 -- colour for those, so it drinks light out of the room instead of adding any.
 -- The global script owns the fade, because only it can hand a light over from
 -- one record to the next without the two overlapping for a frame.
-local function spawnLight(pos, radius, duration, color, fallback, power)
+--
+-- lift: for a light found on the body as it is drawn (see seenPoint), which
+-- way is off the skin. Right on it, it lights a hot spot rather than the blow,
+-- so it is lifted off by about 5 cm (a Morrowind unit is about 1.4 cm).
+local SKIN_GAP = 3.5
+
+local function spawnLight(pos, radius, duration, color, fallback, power, lift)
     if not pos or duration <= 0 or power == 0 then return end
+    if lift then pos = pos + lift * SKIN_GAP end
     core.sendGlobalEvent(DEFS.e.SpawnLight, {
         player = selfObject,
         pos = pos,
@@ -388,29 +395,29 @@ local function sparkLight(pos)
         effectSettings.SparkLightPower or 1)
 end
 
-local function hitLight(pos)
+local function hitLight(pos, lift)
     if not effectSettings.HitLightEnabled then return end
     spawnLight(pos, effectSettings.HitLightRadius or 90,
         effectSettings.HitLightDuration or 0.06,
         effectSettings.HitLightColor, { 1.0, 0.78, 0.45 },
-        effectSettings.HitLightPower or 0.33)
+        effectSettings.HitLightPower or 0.33, lift)
 end
 
 -- For a blow that only took stamina: warmer, and dimmer than the hit light.
-local function staminaLight(pos)
+local function staminaLight(pos, lift)
     if not effectSettings.StaminaLightEnabled then return end
     spawnLight(pos, effectSettings.StaminaLightRadius or 70,
         effectSettings.StaminaLightDuration or 0.15,
         effectSettings.StaminaLightColor, { 1.0, 0.5, 0.15 },
-        effectSettings.StaminaLightPower or 0.3)
+        effectSettings.StaminaLightPower or 0.3, lift)
 end
 
 -- For a blow whose enchantment fired: its colour, at the hit light's reach.
-local function enchantedLight(pos, color)
+local function enchantedLight(pos, color, lift)
     spawnLight(pos, effectSettings.HitLightRadius or 90,
         effectSettings.HitLightDuration or 0.2,
         color, { 1.0, 1.0, 1.0 },
-        enchantSettings.EnchantLightPower or 0.6)
+        enchantSettings.EnchantLightPower or 0.6, lift)
 end
 
 local function weaponInHand()
@@ -511,7 +518,8 @@ local function boxPoint(attacker, victim, enginePos)
     return rayAtVictim(attacker, victim, chestHeight(victim, enginePos))
 end
 
--- Where the blow is seen to have landed, handed to `found`, or nil. A hit
+-- Where the blow is seen to have landed, handed to `found` along with which way
+-- is off the skin - back toward the eye both rays came from - or nil. A hit
 -- arrives as an event, and from there a rendering ray can only be asked for:
 -- both are asked at once and answered by the next frame, and the one along
 -- the aim is believed over the one at the victim's middle.
@@ -534,7 +542,9 @@ local function seenPoint(victim, found)
     local hits, waiting = {}, #targets
     local function answered()
         waiting = waiting - 1
-        if waiting == 0 then found(hits[1] or hits[2]) end
+        if waiting > 0 then return end
+        local hit = hits[1] or hits[2]
+        found(hit, hit and (from - hit):normalize())
     end
     for i, to in ipairs(targets) do
         local asked = pcall(nearby.asyncCastRenderingRay, async:callback(function(res)
@@ -545,15 +555,16 @@ local function seenPoint(victim, found)
     end
 end
 
--- Hands `found` where the blow landed, which by sight is a frame later.
+-- Hands `found` where the blow landed, which by sight is a frame later, and
+-- when that is on the body as drawn, which way is off it.
 -- ranged: a projectile's hit, whose engine position is where it struck.
 local function impactPoint(attacker, victim, enginePos, ranged, found)
     if not victim or not victim:isValid() or not attacker or not attacker:isValid() then
         return found(enginePos)
     end
     if ranged and enginePos then return found(enginePos) end
-    seenPoint(victim, function(seen)
-        if seen then return found(seen) end
+    seenPoint(victim, function(seen, lift)
+        if seen then return found(seen, lift) end
         -- Either may have gone in the meantime.
         if not victim:isValid() or not attacker:isValid() then return found(enginePos) end
         found(boxPoint(attacker, victim, enginePos))
@@ -703,7 +714,7 @@ local function onAttackLanded(data)
     -- did something, shield or no shield, and still lights in its colour.
     if not enchanted and data.noEffect and not effectSettings.LightNoEffectHits then return end
     if not enchanted and sparkedRecently() then return end
-    local light = enchanted and function(pos) enchantedLight(pos, enchanted) end
+    local light = enchanted and function(pos, lift) enchantedLight(pos, enchanted, lift) end
         or data.staminaOnly and staminaLight or hitLight
     impactPoint(selfObject, data.victim, data.hitPos, data.ranged, light)
 end

@@ -276,11 +276,20 @@ end
 local onBody = { hit = true, hitObject = victim, hitPos = seenPos }
 local middle = { hit = true, hitObject = victim, hitPos = middlePos }
 local missed = { hit = false }
+local eye = stub.packages["openmw.camera"].getPosition()
+-- Where a light found on the skin is put: lifted off it, back toward the eye,
+-- by 3.5 units.
+local function offSkin(onSkin)
+    return onSkin + (eye - onSkin):normalize() * 3.5
+end
+local function at(light, pos) return light ~= nil and (light.pos - pos):length() < 1e-6 end
 
 lights = struck({ onBody, middle })
-check(#lights == 1 and lights[1].pos == seenPos,
+check(#lights == 1 and at(lights[1], offSkin(seenPos)),
       "a rendering ray along the aim that lands on the body is believed over the box")
-local eye = stub.packages["openmw.camera"].getPosition()
+check(math.abs((lights[1].pos - seenPos):length() - 3.5) < 1e-6
+      and (lights[1].pos - eye):length() < (seenPos - eye):length(),
+      "and the light goes 3.5 units (about 5 cm) off the skin, toward the eye")
 local aimed, atMiddle = stub.renderRays[1], stub.renderRays[2]
 check(#stub.renderRays == 2 and aimed.options.ignore == stub.player and atMiddle.options.ignore == stub.player,
       "two are asked for, neither stopping at the player's own body")
@@ -296,7 +305,7 @@ check(farSide > 320 and math.abs((aimed.to - eye):length() - farSide) < 1e-6,
       "and the first as far as that far side, when the body lies further than it would go anyway")
 
 lights = struck({ missed, middle })
-check(#lights == 1 and lights[1].pos == middlePos,
+check(#lights == 1 and at(lights[1], offSkin(middlePos)),
       "aimed past them, it is lit where the ray at their middle lands")
 lights = struck({ { hit = true, hitObject = stub.newObject("static"), hitPos = seenPos }, missed })
 check(#lights == 1 and lights[1].pos == aimPos,
@@ -309,7 +318,7 @@ stub.renderRays[2].answer(middle)
 check(#sentLights() == 0, "not by the second alone")
 stub.renderRays[1].answer(onBody)
 lights = sentLights()
-check(#lights == 1 and lights[1].pos == seenPos, "and the aim wins whichever comes back first")
+check(#lights == 1 and at(lights[1], offSkin(seenPos)), "and the aim wins whichever comes back first")
 stub.holdRenderRays = false
 
 victim.getBoundingBox = function() error("no box") end
