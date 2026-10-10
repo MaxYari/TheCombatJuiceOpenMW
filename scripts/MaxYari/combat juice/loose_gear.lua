@@ -178,6 +178,33 @@ local function staysOn(item)
     return ok and type(id) == "string" and neverLoose[id:lower()] == true
 end
 
+-- Daedra Use Bound Equipment takes a dead Daedra's weapons and armour back to
+-- Oblivion, so that Dremora and Golden Saints stop paying for a whole career.
+-- It does that on Died, which the engine sends only once the death animation
+-- is over - by then gear knocked loose has been lying in the world for a
+-- second or two, out of its reach. So with it installed, a Daedra's weapons
+-- and armour stay on the body for it to take. They are ordinary items, the
+-- same records anyone else carries, so it is the Daedra that decides, not a
+-- never_loose list.
+
+M.DUBE_CONTENT_FILE = "Daedra Use Bound Equipment for OpenMW.omwscripts"
+
+local function recalledToOblivion(actor)
+    local ok, recalled = pcall(function()
+        return core.contentFiles.has(M.DUBE_CONTENT_FILE)
+            and types.Creature.objectIsInstance(actor)
+            and types.Creature.record(actor).type == types.Creature.TYPE.Daedra
+    end)
+    return ok and recalled == true
+end
+
+local function isWeaponOrArmor(item)
+    local ok, is = pcall(function()
+        return types.Weapon.objectIsInstance(item) or types.Armor.objectIsInstance(item)
+    end)
+    return ok and is == true
+end
+
 -- Straight away from whoever landed the blow, flat. nil throws them forwards.
 local function awayFrom(actor, attacker)
     if attacker == nil then return nil end
@@ -212,9 +239,14 @@ function M.strip(actor, attacker)
     local keep, thrown = {}, {}
     for slot, item in pairs(equipment) do keep[slot] = item end
 
+    local recalled = recalledToOblivion(actor)
+    local function stays(item)
+        return staysOn(item) or (recalled and isWeaponOrArmor(item))
+    end
+
     local function take(slot)
         local item = keep[slot]
-        if item == nil or staysOn(item) then return end
+        if item == nil or stays(item) then return end
         keep[slot] = nil
         local launch = LAUNCH[slot] or DEFAULT_LAUNCH
         thrown[#thrown + 1] = { item = item, side = launch.side, height = launch.height }
@@ -251,7 +283,7 @@ function M.strip(actor, attacker)
         if okInv and carried ~= nil then
             for i = 1, #carried do
                 local item = carried[i]
-                if not worn[item.id] and not staysOn(item) then
+                if not worn[item.id] and not stays(item) then
                     thrown[#thrown + 1] = { item = item, side = 0, height = DEFAULT_LAUNCH.height }
                 end
             end
@@ -271,6 +303,18 @@ function M.strip(actor, attacker)
     end
     if stripped and not pcall(function() types.Actor.setEquipment(actor, keep) end) then
         return
+    end
+
+    -- Each item is announced to other mods - so that Harder Better Faster
+    -- Stronger, say, can degrade it as it would have in the corpse - globally
+    -- and to the body's own scripts. Sent ahead of the throw, so global scripts hear of it while
+    -- the item is still in the body's inventory, and what they change on it
+    -- goes into the world with it. The body's scripts hear of it an update
+    -- later, with the item already on its way out.
+    for _, entry in ipairs(thrown) do
+        local loose = { actor = actor.object, item = entry.item }
+        core.sendGlobalEvent(DEFS.e.GearKnockedLoose, loose)
+        actor.object:sendEvent(DEFS.e.GearKnockedLoose, loose)
     end
 
     core.sendGlobalEvent(DEFS.e.ThrowGear, {

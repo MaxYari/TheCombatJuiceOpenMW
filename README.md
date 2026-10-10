@@ -54,6 +54,7 @@ Have fun!
 ## ⚔︎ Good to know
 
 - Gear flying off on kill moves it out of the corpse and onto the floor, so you pick it up from the ground instead of looting the body. Each item (weapon, helmet, boots, other worn pieces, inventory) has its own chance in the settings - set a chance to 0 to leave that item on the corpse. Bound (summoned) gear always stays on the corpse; to keep other items on it too, list their record ids in a `.yaml` file in the `loose_gear/` folder, the way `bound_items.yaml` does.
+- With [Daedra Use Bound Equipment](https://www.nexusmods.com/morrowind/mods/57698) installed, Daedra keep their weapons and armour on the body when they die, so that mod can recall them to Oblivion as it means to. Their other gear still flies.
 - To get Impact Effects' original sparks back, delete the `meshes/e/impact` folder from this mod.
 - With [N'Garde](https://www.nexusmods.com/morrowind/mods/58658) installed, its weapon clashes throw The Combat Juice's sparks too, as long as The Combat Juice loads after it. To keep N'Garde's own, delete `meshes/e/spark.nif` from this mod.
 - The look of the kill flash can be tweaked further in the post processing HUD (F2).
@@ -64,6 +65,14 @@ Have fun!
 - With [Dynamic Reticle](https://www.nexusmods.com/morrowind/mods/56584) installed, its reticle fades out while a kill marker drawn over the crosshair is showing, and fades back in with it. This needs a Dynamic Reticle newer than 1.4.1.
 - Throwing darts, stars and knives no longer sounds like a fresh weapon being drawn after every throw: the engine's equip sound, played as the next one of the stack comes into the hand, is cut off. Drawing the stack still sounds as it always did. This applies to everyone throwing, not only you, and can be turned off in Sound Tweaks.
 - Hit markers are simple definition files in the `hitmarkers/` folder. To add your own, copy one of them, point it at your textures, and it will show up in the settings (this works from other mods too).
+
+## ⚔︎ For modders
+
+When gear comes loose off a body, The Combat Juice announces each item with a `CJ_GearKnockedLoose` event, carrying `{ actor = <the body>, item = <the item> }`. It goes to global scripts and to the body's own local scripts.
+
+- Global scripts get it while the item is still in the body's inventory, before it is thrown, so whatever you change on it (its condition, say) goes into the world with it.
+- The body's local scripts get it an update later, with the item already on its way out.
+- Items that stay on the body are not announced. The ones that leave are no longer in its inventory by the time the engine's `Died` event arrives, which happens only once the death animation is over.
 
 ## ⚔︎ Credits
 

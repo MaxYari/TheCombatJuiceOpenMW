@@ -23,6 +23,9 @@ never_loose:
   - bound_dagger
   - bound_gauntlet_right
   - bound_gauntlet_left
+  # Bloodmoon. Not bound, but not loot either: the engine dresses whoever turns into a werewolf in
+  # this robe - the werewolf's fur is its body part - and takes it off them when they turn back.
+  - WerewolfRobe
   # Tamriel Data (used by Tamriel Rebuilt, Project Cyrodiil, Skyrim Home of the Nords).
   # Oathbound gear belongs to undead Remnant legionnaires, their script makes it vanish on death.
   - T_Com_Bound_Claymore_01

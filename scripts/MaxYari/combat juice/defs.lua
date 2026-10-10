@@ -56,6 +56,9 @@ return {
         Slowdown = prefix .. "Slowdown",         -- player -> global, asks for a time scale dip
         SpawnLight = prefix .. "SpawnLight",     -- player -> global, asks for a light flash
         ThrowGear = prefix .. "ThrowGear",       -- dying actor -> global, what came loose off it
+        -- dying actor -> global and itself, one item that came loose. For other
+        -- mods to listen to, so the name must not change (see README).
+        GearKnockedLoose = prefix .. "GearKnockedLoose",
         ShowMessage = prefix .. "ShowMessage",   -- global -> player, a message for the player to read
     },
 
